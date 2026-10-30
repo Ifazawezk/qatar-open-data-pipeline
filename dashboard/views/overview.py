@@ -137,5 +137,5 @@ table = pd.DataFrame(
     [[label, *cells(label, column, fmt)] for label, column, fmt in ROWS],
     columns=["Indicator", *[str(y) for y in years]],
 )
-st.dataframe(table, hide_index=True)
+st.dataframe(table, hide_index=True, height=36 * (len(table) + 1) + 2)
 st.caption("An empty cell means the source does not cover that whole year.")
