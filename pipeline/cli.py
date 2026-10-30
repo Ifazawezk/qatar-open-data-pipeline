@@ -8,6 +8,7 @@ import sys
 
 from pipeline import __version__
 from pipeline.config import ConfigError, Settings, load_catalogue
+from pipeline.extract import ExtractError, extract_all
 
 log = logging.getLogger("pipeline")
 
@@ -27,6 +28,16 @@ def cmd_sources(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def cmd_extract(args: argparse.Namespace, settings: Settings) -> int:
+    catalogue = load_catalogue(settings.sources_file)
+    results = extract_all(settings, catalogue, keys=args.only, force=args.force)
+    print()
+    print(f"{'source':<26}{'status':<12}{'rows':>8}{'bytes':>10}  fetched_at")
+    for r in results:
+        print(f"{r.key:<26}{r.status:<12}{r.row_count:>8}{r.bytes:>10}  {r.fetched_at}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m pipeline",
@@ -38,6 +49,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("sources", help="list the configured datasets")
     p.set_defaults(func=cmd_sources)
+
+    p = sub.add_parser("extract", help="download raw datasets into data/raw")
+    p.add_argument("--only", nargs="+", metavar="KEY", help="extract only these sources")
+    p.add_argument("--force", action="store_true", help="ignore the cache and download again")
+    p.set_defaults(func=cmd_extract)
     return parser
 
 
@@ -56,3 +72,6 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as exc:
         log.error("configuration problem: %s", exc)
         return 2
+    except ExtractError as exc:
+        log.error("extract failed: %s", exc)
+        return 1

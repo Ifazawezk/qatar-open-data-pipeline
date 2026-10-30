@@ -25,6 +25,7 @@ TASKS: dict[str, tuple[str, list[list[str]]]] = {
     ),
     "format": ("format the code with ruff", [[PY, "-m", "ruff", "format", "."]]),
     "sources": ("list configured datasets", [[PY, "-m", "pipeline", "sources"]]),
+    "extract": ("download raw datasets from the portal", [[PY, "-m", "pipeline", "extract"]]),
 }
 
 

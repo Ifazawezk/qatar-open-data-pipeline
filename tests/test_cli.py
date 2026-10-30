@@ -14,3 +14,7 @@ def test_unknown_command_exits_with_usage_error():
     with pytest.raises(SystemExit) as exc:
         build_parser().parse_args(["nope"])
     assert exc.value.code == 2
+
+
+def test_extract_rejects_unknown_source_before_any_request():
+    assert main(["extract", "--only", "not_a_source"]) == 2
