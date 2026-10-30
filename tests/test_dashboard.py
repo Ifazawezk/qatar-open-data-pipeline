@@ -110,7 +110,13 @@ def app(fixture_settings, warehouse, monkeypatch):
     return at
 
 
-PAGES = ["views/population.py", "views/prices.py"]
+PAGES = [
+    "views/population.py",
+    "views/prices.py",
+    "views/travel.py",
+    "views/utilities.py",
+    "views/pipeline_health.py",
+]
 
 
 def test_overview_renders_kpis_from_the_warehouse(app):

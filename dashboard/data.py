@@ -88,6 +88,7 @@ def latest_model_runs() -> pd.DataFrame:
         """
         select * from audit.model_runs
         where run_id = (select arg_max(run_id, finished_at) from audit.model_runs)
+        order by case layer when 'staging' then 0 when 'intermediate' then 1 else 2 end, model
         """
     )
 

@@ -23,6 +23,14 @@ PAGES = [
     st.Page("views/overview.py", title="Overview", icon=":material/dashboard:", default=True),
     st.Page("views/population.py", title="Population and jobs", icon=":material/groups:"),
     st.Page("views/prices.py", title="Prices", icon=":material/sell:"),
+    st.Page("views/travel.py", title="Travel and hotels", icon=":material/flight:"),
+    st.Page("views/utilities.py", title="Electricity and water", icon=":material/bolt:"),
+    st.Page(
+        "views/pipeline_health.py",
+        title="Pipeline health",
+        icon=":material/fact_check:",
+        url_path="pipeline",
+    ),
 ]
 
 navigation = st.navigation(PAGES)

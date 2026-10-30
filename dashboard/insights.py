@@ -193,6 +193,12 @@ def utilities(national: pd.DataFrame, zones: pd.DataFrame) -> list[str]:
             out.append(
                 f"The ten largest of {len(z)} zones used {share:.0f}% of the electricity in {year}."
             )
+        if not z.empty and "zone_label" in z:
+            first = z.iloc[0]
+            out.append(
+                f"The biggest user was {first.zone_label} with "
+                f"{first.electricity_share_pct:.1f}% of the national total."
+            )
     partial = national[~national.is_complete_year]
     if not partial.empty:
         years = ", ".join(str(int(y)) for y in partial.year)

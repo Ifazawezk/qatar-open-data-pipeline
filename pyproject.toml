@@ -29,6 +29,10 @@ packages = ["pipeline"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q"
+filterwarnings = [
+    # raised inside DuckDB's DataFrame conversion with pandas 3.1, not in this code
+    "ignore:The inplace keyword in DataFrame.drop is deprecated",
+]
 
 [tool.ruff]
 line-length = 100
