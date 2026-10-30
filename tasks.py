@@ -34,6 +34,11 @@ TASKS: dict[str, tuple[str, list[list[str]]]] = {
         "start the Streamlit dashboard",
         [[PY, "-m", "streamlit", "run", "dashboard/app.py"]],
     ),
+    "fixtures": ("cut test fixtures from data/raw", [[PY, "scripts/make_fixtures.py"]]),
+    "screenshots": (
+        "screenshot every dashboard page into docs/images",
+        [[PY, "scripts/screenshots.py"], [PY, "scripts/make_banner.py"]],
+    ),
 }
 
 

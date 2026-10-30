@@ -141,22 +141,22 @@ flowchart LR
   end
   raw_hotel_guests_nights --> staging_stg_hotel_guests_nights
   seeds_months --> staging_stg_hotel_guests_nights
-  raw_hia_passengers --> staging_stg_hia_passengers
-  seeds_months --> staging_stg_hia_passengers
   raw_cpi_monthly --> staging_stg_cpi_monthly
   seeds_months --> staging_stg_cpi_monthly
   seeds_cpi_groups --> staging_stg_cpi_monthly
+  raw_hia_passengers --> staging_stg_hia_passengers
+  seeds_months --> staging_stg_hia_passengers
   raw_zones --> staging_stg_zones
   raw_water_by_zone --> staging_stg_water_by_zone
   raw_electricity_by_zone --> staging_stg_electricity_by_zone
   raw_population_labour_force --> staging_stg_population_labour_force
   staging_stg_hotel_guests_nights --> intermediate_int_hotel_monthly
-  staging_stg_hia_passengers --> intermediate_int_airport_monthly
+  staging_stg_cpi_monthly --> intermediate_int_cpi_monthly_changes
   seeds_months --> marts_dim_month
   staging_stg_cpi_monthly --> marts_dim_month
   staging_stg_hia_passengers --> marts_dim_month
   staging_stg_hotel_guests_nights --> marts_dim_month
-  staging_stg_cpi_monthly --> intermediate_int_cpi_monthly_changes
+  staging_stg_hia_passengers --> intermediate_int_airport_monthly
   staging_stg_zones --> marts_dim_zone
   staging_stg_electricity_by_zone --> marts_dim_zone
   staging_stg_water_by_zone --> marts_dim_zone
@@ -164,10 +164,10 @@ flowchart LR
   staging_stg_electricity_by_zone --> intermediate_int_utilities_zone_annual
   staging_stg_water_by_zone --> intermediate_int_utilities_zone_annual
   staging_stg_population_labour_force --> intermediate_int_labour_force_quarterly
+  intermediate_int_cpi_monthly_changes --> marts_fct_cpi_monthly
   marts_dim_month --> marts_fct_travel_monthly
   intermediate_int_airport_monthly --> marts_fct_travel_monthly
   intermediate_int_hotel_monthly --> marts_fct_travel_monthly
-  intermediate_int_cpi_monthly_changes --> marts_fct_cpi_monthly
   intermediate_int_utilities_zone_annual --> marts_fct_utilities_zone_annual
   marts_dim_zone --> marts_fct_utilities_zone_annual
   intermediate_int_labour_force_quarterly --> marts_fct_labour_market_quarterly
