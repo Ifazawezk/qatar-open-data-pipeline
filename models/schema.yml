@@ -1,0 +1,285 @@
+# Data tests for every model. `python -m pipeline test` runs them against the
+# warehouse; `python -m pipeline run` runs them inside the build transaction
+# and rolls the build back if an error-level test fails.
+#
+# severity defaults to error. Use `severity: warn` for known source issues
+# that should stay visible without blocking the pipeline.
+#
+# expression tests count rows where the condition is false; rows where it is
+# NULL (missing data) are not counted.
+
+sources:
+  # How long ago we last confirmed each raw file with the portal.
+  freshness:
+    warn_after_days: 7
+    error_after_days: 45
+
+models:
+  # ---------------------------------------------------------------- staging
+  - name: stg_population_labour_force
+    tests:
+      - unique: [year, quarter, sex, indicator]
+      - row_count: {min: 300}
+      - query:
+          name: every_quarter_has_all_indicators
+          sql: |
+            select year, quarter
+            from {{ ref('stg_population_labour_force') }}
+            group by year, quarter
+            having count(*) <> 10
+    columns:
+      - name: year
+        tests: [not_null, {range: {min: 2018, max: 2100}}]
+      - name: quarter
+        tests: [not_null, {range: {min: 1, max: 4}}]
+      - name: sex
+        tests: [not_null, {accepted_values: {values: [male, female]}}]
+      - name: indicator
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - population
+                - population_15_plus
+                - economically_active
+                - economically_inactive
+                - employed
+      - name: persons
+        tests: [not_null, {range: {min: 0}}]
+
+  - name: stg_cpi_monthly
+    tests:
+      - unique: [month_start, group_code]
+      - row_count: {min: 900}
+      - query:
+          name: every_month_has_all_groups
+          sql: |
+            select month_start
+            from {{ ref('stg_cpi_monthly') }}
+            group by month_start
+            having count(*) <> 13
+    columns:
+      - name: month_start
+        tests: [not_null]
+      - name: group_code
+        tests: [not_null]
+      - name: group_name_en
+        # NULL means a group code that is missing from seeds/cpi_groups.csv
+        tests: [not_null]
+      - name: group_name_ar
+        tests: [not_null]
+      - name: cpi_index
+        tests: [not_null, {range: {min: 50, max: 400}}]
+
+  - name: stg_hia_passengers
+    tests:
+      - unique: [month_start, direction]
+      - row_count: {min: 140}
+    columns:
+      - name: month_start
+        tests: [not_null]
+      - name: direction
+        tests: [not_null, {accepted_values: {values: [arrivals, departures]}}]
+      - name: passengers
+        tests: [not_null, {range: {min: 0, max: 5000000}}]
+
+  - name: stg_hotel_guests_nights
+    tests:
+      - unique: [month_start, measure]
+      - row_count: {min: 120}
+    columns:
+      - name: month_start
+        tests: [not_null]
+      - name: measure
+        tests: [not_null, {accepted_values: {values: [guests, nights]}}]
+      - name: value
+        tests: [not_null, {range: {min: 0}}]
+
+  - name: stg_electricity_by_zone
+    tests:
+      - unique: [year, zone_number]
+      - row_count: {min: 500}
+    columns:
+      - name: year
+        tests: [not_null, {range: {min: 2000, max: 2100}}]
+      - name: zone_number
+        tests: [not_null, {range: {min: 1, max: 99}}]
+      - name: electricity_kwh
+        tests: [not_null, {range: {min: 0}}]
+
+  - name: stg_water_by_zone
+    tests:
+      - unique: [year, zone_number]
+      - row_count: {min: 500}
+    columns:
+      - name: year
+        tests: [not_null, {range: {min: 2000, max: 2100}}]
+      - name: zone_number
+        tests: [not_null, {range: {min: 1, max: 99}}]
+      - name: water_m3
+        tests: [not_null, {range: {min: 0}}]
+
+  - name: stg_zones
+    columns:
+      - name: zone_number
+        tests: [not_null, unique]
+      - name: zone_name_en
+        tests: [not_null]
+      - name: zone_name_ar
+        tests: [not_null]
+
+  # ----------------------------------------------------------- intermediate
+  - name: int_labour_force_quarterly
+    tests:
+      - unique: [quarter_start, sex]
+      - expression:
+          name: population_15_plus_is_active_plus_inactive
+          sql: population_15_plus = economically_active + economically_inactive
+      - expression:
+          name: employed_within_active
+          sql: employed <= economically_active
+      - expression:
+          name: adults_within_population
+          sql: population_15_plus <= population
+
+  - name: int_population_annual
+    columns:
+      - name: year
+        tests: [not_null, unique]
+      - name: quarters_reported
+        tests: [{range: {min: 1, max: 4}}]
+      - name: avg_population
+        tests: [not_null, {range: {min: 1000000, max: 10000000}}]
+
+  - name: int_cpi_monthly_changes
+    tests:
+      - unique: [month_start, group_code]
+
+  - name: int_airport_monthly
+    tests:
+      - expression:
+          name: passengers_is_arrivals_plus_departures
+          sql: passengers = arrivals + departures
+    columns:
+      - name: month_start
+        tests: [not_null, unique]
+
+  - name: int_hotel_monthly
+    columns:
+      - name: month_start
+        tests: [not_null, unique]
+      - name: guests
+        tests: [not_null]
+      - name: nights
+        tests: [not_null]
+
+  - name: int_utilities_zone_annual
+    tests:
+      - unique: [year, zone_number]
+    columns:
+      - name: electricity_kwh
+        # both KAHRAMAA files should cover the same zones and years
+        tests: [not_null]
+      - name: water_m3
+        tests: [not_null]
+
+  # ------------------------------------------------------------------ marts
+  - name: dim_zone
+    columns:
+      - name: zone_number
+        tests: [not_null, unique]
+      - name: zone_label
+        tests: [not_null, unique]
+      - name: has_name
+        tests:
+          - accepted_values: {values: [true], severity: warn}
+
+  - name: dim_month
+    columns:
+      - name: month_start
+        tests: [not_null, unique]
+      - name: month_name_ar
+        tests: [not_null]
+
+  - name: fct_labour_market_quarterly
+    tests:
+      - unique: [quarter_start, sex]
+      - freshness: {column: quarter_start, warn_after_days: 300, error_after_days: 900}
+    columns:
+      - name: sex
+        tests: [{accepted_values: {values: [male, female, total]}}]
+      - name: participation_rate_pct
+        tests: [not_null, {range: {min: 0, max: 100}}]
+      - name: unemployment_rate_pct
+        tests: [not_null, {range: {min: 0, max: 100}}]
+      - name: population_yoy_pct
+        tests: [{range: {min: -20, max: 30, severity: warn}}]
+
+  - name: fct_cpi_monthly
+    tests:
+      - unique: [month_start, group_code]
+      # The portal publishes CPI with a delay; warn once it is clearly behind.
+      - freshness: {column: month_start, warn_after_days: 150, error_after_days: 800}
+    columns:
+      - name: yoy_change_pct
+        tests: [{range: {min: -50, max: 50, severity: warn}}]
+
+  - name: fct_inflation_annual
+    tests:
+      - unique: [year, group_code]
+    columns:
+      - name: months_reported
+        tests: [{range: {min: 1, max: 12}}]
+
+  - name: fct_travel_monthly
+    tests:
+      - unique: [month_start]
+      # Known source issue: from January 2019 to January 2020 the published
+      # nights are lower than the guests, which cannot be right. Kept visible.
+      - expression:
+          name: nights_at_least_guests
+          sql: hotel_nights >= hotel_guests
+          severity: warn
+      # Neither travel series has been updated on the portal since 2023.
+      - freshness: {column: month_start, warn_after_days: 400}
+    columns:
+      - name: airport_passengers
+        tests: [{range: {min: 0, max: 10000000}}]
+
+  - name: fct_utilities_zone_annual
+    tests:
+      - unique: [year, zone_number]
+    columns:
+      - name: zone_number
+        tests:
+          - not_null
+          - relationships: {to: dim_zone, field: zone_number}
+      - name: zone_label
+        tests: [not_null]
+      - name: electricity_share_pct
+        tests: [{range: {min: 0, max: 100}}]
+
+  - name: fct_utilities_national_annual
+    tests:
+      - expression:
+          name: most_zones_reported
+          sql: zones_reported >= 85
+      - expression:
+          name: no_per_capita_for_partial_years
+          sql: is_complete_year or electricity_kwh_per_capita is null
+    columns:
+      - name: year
+        tests: [not_null, unique]
+      - name: electricity_kwh_per_capita
+        tests: [{range: {min: 5000, max: 40000, severity: warn}}]
+      - name: water_litres_per_capita_per_day
+        tests: [{range: {min: 100, max: 1500, severity: warn}}]
+
+  - name: mart_annual_indicators
+    columns:
+      - name: year
+        tests: [not_null, unique]
+      - name: cpi_inflation_pct
+        tests: [{range: {min: -20, max: 50, severity: warn}}]
+      - name: unemployment_rate_pct
+        tests: [{range: {min: 0, max: 30}}]

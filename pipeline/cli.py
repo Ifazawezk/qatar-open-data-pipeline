@@ -5,12 +5,14 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import time
 
 from pipeline import __version__
-from pipeline.build import build_warehouse
+from pipeline.build import build_warehouse, check_warehouse
 from pipeline.config import ConfigError, Settings, load_catalogue
 from pipeline.extract import ExtractError, extract_all
 from pipeline.load import LoadError
+from pipeline.quality import DataQualityError, QualityConfigError, summarise
 from pipeline.transform import ModelError
 
 log = logging.getLogger("pipeline")
@@ -45,6 +47,32 @@ def cmd_transform(args: argparse.Namespace, settings: Settings) -> int:
     catalogue = load_catalogue(settings.sources_file)
     result = build_warehouse(settings, catalogue, select=args.select)
     print(f"built {len(result.models)} models into {settings.warehouse_path}")
+    print("run `python -m pipeline test` to check the data")
+    return 0
+
+
+def cmd_test(args: argparse.Namespace, settings: Settings) -> int:
+    result = check_warehouse(settings)
+    print(summarise(result.checks))
+    return 0
+
+
+def cmd_run(args: argparse.Namespace, settings: Settings) -> int:
+    catalogue = load_catalogue(settings.sources_file)
+    started = time.perf_counter()
+    if args.skip_extract:
+        log.info("skipping extract, using the files already in %s", settings.raw_dir)
+    else:
+        extract_all(settings, catalogue, force=args.force)
+    extracted = time.perf_counter()
+    result = build_warehouse(settings, catalogue, run_tests=True)
+    finished = time.perf_counter()
+    print(summarise(result.checks))
+    print(
+        f"pipeline finished in {finished - started:.1f}s "
+        f"(extract {extracted - started:.1f}s, build and test {finished - extracted:.1f}s), "
+        f"{len(result.models)} models, run {result.run_id}"
+    )
     return 0
 
 
@@ -57,6 +85,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-v", "--verbose", action="store_true", help="debug logging")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    p = sub.add_parser("run", help="extract, build and test everything (the normal command)")
+    p.add_argument("--skip-extract", action="store_true", help="reuse the raw files on disk")
+    p.add_argument("--force", action="store_true", help="download every dataset again")
+    p.set_defaults(func=cmd_run)
+
     p = sub.add_parser("sources", help="list the configured datasets")
     p.set_defaults(func=cmd_sources)
 
@@ -68,6 +101,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("transform", help="load raw files and build the SQL models")
     p.add_argument("--select", nargs="+", metavar="MODEL", help="build these models and parents")
     p.set_defaults(func=cmd_transform)
+
+    p = sub.add_parser("test", help="run the data tests against the warehouse")
+    p.set_defaults(func=cmd_test)
     return parser
 
 
@@ -83,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     settings = Settings.from_env()
     try:
         return args.func(args, settings)
-    except ConfigError as exc:
+    except (ConfigError, QualityConfigError) as exc:
         log.error("configuration problem: %s", exc)
         return 2
     except ExtractError as exc:
@@ -91,4 +127,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     except (LoadError, ModelError) as exc:
         log.error("transform failed, warehouse left unchanged: %s", exc)
+        return 1
+    except DataQualityError as exc:
+        print(summarise(exc.results), file=sys.stderr)
+        print("\n" + "!" * 72, file=sys.stderr)
+        print(f"DATA QUALITY FAILED: {exc}", file=sys.stderr)
+        print("!" * 72, file=sys.stderr)
         return 1

@@ -27,6 +27,8 @@ TASKS: dict[str, tuple[str, list[list[str]]]] = {
     "sources": ("list configured datasets", [[PY, "-m", "pipeline", "sources"]]),
     "extract": ("download raw datasets from the portal", [[PY, "-m", "pipeline", "extract"]]),
     "transform": ("load raw files and build the models", [[PY, "-m", "pipeline", "transform"]]),
+    "datatest": ("run the data tests on the warehouse", [[PY, "-m", "pipeline", "test"]]),
+    "run": ("extract, build and test everything", [[PY, "-m", "pipeline", "run"]]),
 }
 
 

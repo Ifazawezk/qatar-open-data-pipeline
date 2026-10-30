@@ -2,4 +2,6 @@
 duckdb==2.0.0
 pandas==3.1.0
 PyYAML==6.0.3
+# DuckDB needs pytz to return TIMESTAMP WITH TIME ZONE values to Python
+pytz==2026.6
 requests==2.34.2
