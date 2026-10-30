@@ -6,8 +6,17 @@ from pathlib import Path
 
 import pytest
 
-from pipeline.config import Catalogue, PortalConfig, Settings, Source
+from pipeline.build import build_warehouse
+from pipeline.config import (
+    PROJECT_ROOT,
+    Catalogue,
+    PortalConfig,
+    Settings,
+    Source,
+    load_catalogue,
+)
 from pipeline.extract import Manifest, ManifestEntry, inspect_csv, sha256_bytes
+from pipeline.warehouse import connect
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -66,3 +75,30 @@ def settings(tmp_path: Path) -> Settings:
         data_dir=tmp_path / "data",
         warehouse_path=tmp_path / "data" / "warehouse.duckdb",
     )
+
+
+def stage_fixture_files(settings: Settings, fetched_at: str = "2026-10-01T06:00:00+00:00") -> None:
+    """Copy the trimmed real-data fixtures into a raw dir with a manifest."""
+    for path in sorted((FIXTURES / "raw").glob("*.csv")):
+        write_raw(settings, path.stem, path.read_bytes(), fetched_at=fetched_at)
+
+
+@pytest.fixture(scope="session")
+def fixture_settings(tmp_path_factory) -> Settings:
+    """Project models and seeds, but data and warehouse in a temp dir."""
+    data_dir = tmp_path_factory.mktemp("data")
+    settings = Settings(
+        root=PROJECT_ROOT, data_dir=data_dir, warehouse_path=data_dir / "warehouse.duckdb"
+    )
+    stage_fixture_files(settings)
+    return settings
+
+
+@pytest.fixture(scope="session")
+def warehouse(fixture_settings):
+    """A warehouse built once from the fixtures with the real models."""
+    catalogue = load_catalogue(fixture_settings.sources_file)
+    build_warehouse(fixture_settings, catalogue)
+    con = connect(fixture_settings.warehouse_path, read_only=True)
+    yield con
+    con.close()
