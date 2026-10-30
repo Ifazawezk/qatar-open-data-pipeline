@@ -17,7 +17,7 @@ from pipeline.extract import (
 )
 
 API = "https://portal.test/api/explore/v2.1"
-CSV = "﻿year,zone_number,value\n2024,1,100\n2024,2,200\n2025,1,150\n".encode()
+CSV = "\ufeffyear,zone_number,value\n2024,1,100\n2024,2,200\n2025,1,150\n".encode()
 NOW = datetime(2026, 1, 10, 8, 0, tzinfo=UTC)
 
 
@@ -85,7 +85,7 @@ def mock_portal(rsps, version="2026-01-01T00:00:00+00:00", body=CSV):
 
 
 def test_inspect_csv_handles_bom_and_quoted_newlines():
-    content = '﻿a,b\n1,"two\nlines"\n3,4\n'.encode()
+    content = '\ufeffa,b\n1,"two\nlines"\n3,4\n'.encode()
     header, rows = inspect_csv(content)
     assert header == ["a", "b"]
     assert rows == 2

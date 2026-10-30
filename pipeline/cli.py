@@ -7,8 +7,11 @@ import logging
 import sys
 
 from pipeline import __version__
+from pipeline.build import build_warehouse
 from pipeline.config import ConfigError, Settings, load_catalogue
 from pipeline.extract import ExtractError, extract_all
+from pipeline.load import LoadError
+from pipeline.transform import ModelError
 
 log = logging.getLogger("pipeline")
 
@@ -38,6 +41,13 @@ def cmd_extract(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def cmd_transform(args: argparse.Namespace, settings: Settings) -> int:
+    catalogue = load_catalogue(settings.sources_file)
+    result = build_warehouse(settings, catalogue, select=args.select)
+    print(f"built {len(result.models)} models into {settings.warehouse_path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m pipeline",
@@ -54,6 +64,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--only", nargs="+", metavar="KEY", help="extract only these sources")
     p.add_argument("--force", action="store_true", help="ignore the cache and download again")
     p.set_defaults(func=cmd_extract)
+
+    p = sub.add_parser("transform", help="load raw files and build the SQL models")
+    p.add_argument("--select", nargs="+", metavar="MODEL", help="build these models and parents")
+    p.set_defaults(func=cmd_transform)
     return parser
 
 
@@ -74,4 +88,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     except ExtractError as exc:
         log.error("extract failed: %s", exc)
+        return 1
+    except (LoadError, ModelError) as exc:
+        log.error("transform failed, warehouse left unchanged: %s", exc)
         return 1

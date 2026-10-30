@@ -89,6 +89,14 @@ class Settings:
     def sources_file(self) -> Path:
         return self.root / "config" / "sources.yml"
 
+    @property
+    def models_dir(self) -> Path:
+        return self.root / "models"
+
+    @property
+    def seeds_dir(self) -> Path:
+        return self.root / "seeds"
+
     @classmethod
     def from_env(cls, root: Path = PROJECT_ROOT) -> Settings:
         """Build settings, letting QODP_DATA_DIR and QODP_WAREHOUSE override paths."""
