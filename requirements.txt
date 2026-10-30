@@ -1,0 +1,5 @@
+# Runtime dependencies, pinned to the versions the project is tested with.
+duckdb==2.0.0
+pandas==3.1.0
+PyYAML==6.0.3
+requests==2.34.2

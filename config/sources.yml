@@ -1,0 +1,95 @@
+# Datasets pulled from the Qatar Open Data Portal (an Opendatasoft site).
+#
+# Each source is downloaded once as CSV through the Explore API v2.1 export
+# endpoint and stored unchanged in data/raw/<key>.csv. The key becomes the
+# table name in the warehouse (raw.<key>), so keep it short and snake_case.
+#
+# expected_columns is a contract: if the portal renames or drops a column the
+# extract step stops with an error instead of loading a broken file.
+
+portal:
+  api_url: https://www.data.gov.qa/api/explore/v2.1
+  site_url: https://www.data.gov.qa
+  licence: CC BY 4.0
+  licence_url: https://creativecommons.org/licenses/by/4.0/
+  # Be polite: one request at a time with a pause in between.
+  request_delay_seconds: 1.0
+  timeout_seconds: 30
+  max_retries: 4
+  backoff_seconds: 2.0
+  # Files younger than this are reused without asking the portal at all.
+  cache_ttl_hours: 24
+
+sources:
+  - key: population_labour_force
+    dataset_id: population-and-labour-force-by-gender-quarterly
+    title: Population and Labor Force by Sex (quarterly)
+    publisher: National Planning Council
+    description: >
+      Quarterly population, population aged 15+, economically active,
+      employed and economically inactive persons by sex, from the Labour
+      Force Sample Survey. 2018 Q1 onwards.
+    expected_columns: [year, quarter, gender, ljns, indicator, lmw_shr, number]
+    min_rows: 300
+
+  - key: cpi_monthly
+    dataset_id: consumer-price-index-cpi-by-expenditure-group-monthly
+    title: Consumer Price Index (CPI) by Expenditure Group, monthly
+    publisher: National Planning Council
+    description: >
+      Monthly CPI for the general index and 12 expenditure groups
+      (base 2018 = 100). 2020 onwards.
+    expected_columns: [year, month, lshhr, group_code, group, lmjmw, cpi_index]
+    min_rows: 900
+
+  - key: hia_passengers
+    dataset_id: arrival-and-departures-via-hamad-international-airport-by-month-and-year
+    title: Arrivals and departures via Hamad International Airport by month
+    publisher: National Planning Council
+    description: >
+      Monthly arriving and departing passengers at Hamad International
+      Airport, 2017 to 2022.
+    expected_columns: [year, month, lshhr, type, nw, total]
+    min_rows: 140
+
+  - key: hotel_guests_nights
+    dataset_id: number-of-hotel-guests-and-nights-of-stay-by-month
+    title: Number of hotel guests and nights of stay by month
+    publisher: National Planning Council
+    description: >
+      Monthly hotel guests and nights of stay in Qatar, 2019 to 2023. The
+      year and the measure share one text column in the source.
+    expected_columns: [month, month_ar, year, sn, value]
+    min_rows: 120
+
+  - key: electricity_by_zone
+    dataset_id: electricity-total-consumption-by-zone-number
+    title: Electricity total consumption by zone number
+    publisher: KAHRAMAA
+    description: >
+      Annual electricity consumption in kWh for each official zone, 2021
+      onwards. The latest year is partial (the portal notes January to August
+      for 2026).
+    expected_columns: [year, zone_number, value]
+    min_rows: 500
+
+  - key: water_by_zone
+    dataset_id: water-total-consumption-by-zone-number
+    title: Water total consumption by zone number
+    publisher: KAHRAMAA
+    description: >
+      Annual water consumption in cubic metres for each official zone, 2021
+      onwards. Same zones and coverage as the electricity file.
+    expected_columns: [year, zone_number, value]
+    min_rows: 500
+
+  - key: zones
+    dataset_id: population-area-and-population-density-per-square-kilometers-by-zone
+    title: Population, area and population density by zone
+    publisher: National Planning Council
+    description: >
+      Reference table used for zone names in English and Arabic. Its
+      population columns stop in 2019 and are mostly empty, so only the
+      names are used.
+    expected_columns: [year, number_of_zone, lmntq, zone, population, area_in_km]
+    min_rows: 90
