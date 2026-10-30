@@ -187,18 +187,31 @@ models:
   - name: dim_zone
     columns:
       - name: zone_number
+        description: Official zone number (1 to 98).
         tests: [not_null, unique]
+      - name: zone_name_en
+        description: Full English name; multi-district zones list every district.
+      - name: zone_name_ar
+        description: Full Arabic name.
+      - name: zone_short_name_en
+        description: First district in the zone name, for charts.
       - name: zone_label
+        description: "Display label such as: Zone 70: Leabaib and others."
         tests: [not_null, unique]
       - name: has_name
+        description: False when the zone appears in the utility files but not in the names table.
         tests:
           - accepted_values: {values: [true], severity: warn}
 
   - name: dim_month
     columns:
       - name: month_start
+        description: First day of the month; join key for monthly facts.
         tests: [not_null, unique]
+      - name: year_month
+        description: Text label YYYY-MM.
       - name: month_name_ar
+        description: Arabic month name, in the form the portal uses (يناير, فبراير...).
         tests: [not_null]
 
   - name: fct_labour_market_quarterly
@@ -206,13 +219,29 @@ models:
       - unique: [quarter_start, sex]
       - freshness: {column: quarter_start, warn_after_days: 300, error_after_days: 900}
     columns:
+      - name: quarter_start
+        description: First day of the survey quarter.
       - name: sex
+        description: male, female or total (sum of both).
         tests: [{accepted_values: {values: [male, female, total]}}]
+      - name: population
+        description: Total population (all ages).
+      - name: population_15_plus
+        description: Population aged 15 and above.
+      - name: economically_active
+        description: Labour force aged 15+ (employed plus unemployed).
+      - name: unemployed
+        description: Economically active minus employed.
       - name: participation_rate_pct
+        description: Economically active / population 15+, in percent.
         tests: [not_null, {range: {min: 0, max: 100}}]
       - name: unemployment_rate_pct
+        description: Unemployed / economically active, in percent.
         tests: [not_null, {range: {min: 0, max: 100}}]
+      - name: employment_to_population_pct
+        description: Employed / population 15+, in percent.
       - name: population_yoy_pct
+        description: Change in population against the same quarter a year earlier.
         tests: [{range: {min: -20, max: 30, severity: warn}}]
 
   - name: fct_cpi_monthly
@@ -221,7 +250,18 @@ models:
       # The portal publishes CPI with a delay; warn once it is clearly behind.
       - freshness: {column: month_start, warn_after_days: 150, error_after_days: 800}
     columns:
+      - name: group_code
+        description: Three-digit expenditure group code; 000 is the general index.
+      - name: group_name_en
+        description: Cleaned English group name (from seeds/cpi_groups.csv).
+      - name: group_name_ar
+        description: Arabic group name from the source, whitespace normalised.
+      - name: cpi_index
+        description: Index value, base year 2018 = 100.
+      - name: mom_change_pct
+        description: Change against the previous month, in percent.
       - name: yoy_change_pct
+        description: Change against the same month a year earlier, in percent.
         tests: [{range: {min: -50, max: 50, severity: warn}}]
 
   - name: fct_inflation_annual
@@ -229,7 +269,14 @@ models:
       - unique: [year, group_code]
     columns:
       - name: months_reported
+        description: Months of data in the year; changes need 12.
         tests: [{range: {min: 1, max: 12}}]
+      - name: avg_index
+        description: Average of the monthly index values.
+      - name: avg_inflation_pct
+        description: Change in the annual average index against the previous year.
+      - name: dec_on_dec_pct
+        description: December index against the previous December.
 
   - name: fct_travel_monthly
     tests:
@@ -243,8 +290,23 @@ models:
       # Neither travel series has been updated on the portal since 2023.
       - freshness: {column: month_start, warn_after_days: 400}
     columns:
+      - name: airport_arrivals
+        description: Arriving passengers at Hamad International Airport.
+      - name: airport_departures
+        description: Departing passengers at Hamad International Airport.
       - name: airport_passengers
+        description: Arrivals plus departures (no transit).
         tests: [{range: {min: 0, max: 10000000}}]
+      - name: hotel_guests
+        description: Hotel guests in the month.
+      - name: hotel_nights
+        description: Nights of stay in the month.
+      - name: nights_per_guest
+        description: Hotel nights divided by hotel guests.
+      - name: airport_passengers_yoy_pct
+        description: Change against the same month a year earlier.
+      - name: hotel_guests_yoy_pct
+        description: Change against the same month a year earlier.
 
   - name: fct_utilities_zone_annual
     tests:
@@ -256,8 +318,19 @@ models:
           - relationships: {to: dim_zone, field: zone_number}
       - name: zone_label
         tests: [not_null]
+      - name: is_complete_year
+        description: False for the running year, which KAHRAMAA publishes as a partial total.
+      - name: electricity_kwh
+        description: Electricity consumption in kWh.
+      - name: water_m3
+        description: Water consumption in cubic metres.
       - name: electricity_share_pct
+        description: Share of the national electricity total in that year.
         tests: [{range: {min: 0, max: 100}}]
+      - name: electricity_rank
+        description: 1 = the zone with the highest consumption that year.
+      - name: electricity_yoy_pct
+        description: Change against the previous year (complete years only).
 
   - name: fct_utilities_national_annual
     tests:
@@ -270,16 +343,44 @@ models:
     columns:
       - name: year
         tests: [not_null, unique]
+      - name: is_complete_year
+        description: False for the running year (partial totals).
+      - name: avg_population
+        description: Average of the four quarterly population estimates.
       - name: electricity_kwh_per_capita
+        description: Electricity kWh per resident (complete years only).
         tests: [{range: {min: 5000, max: 40000, severity: warn}}]
+      - name: water_m3_per_capita
+        description: Water cubic metres per resident (complete years only).
       - name: water_litres_per_capita_per_day
+        description: Water litres per resident per day (complete years only).
         tests: [{range: {min: 100, max: 1500, severity: warn}}]
 
   - name: mart_annual_indicators
     columns:
       - name: year
         tests: [not_null, unique]
-      - name: cpi_inflation_pct
-        tests: [{range: {min: -20, max: 50, severity: warn}}]
+      - name: avg_population
+        description: Average quarterly population (years with four quarters).
+      - name: population_growth_pct
+        description: Change in average population against the previous year.
+      - name: participation_rate_pct
+        description: Labour force participation, all quarters of the year pooled.
+      - name: female_participation_rate_pct
+        description: Female labour force participation, quarters pooled.
       - name: unemployment_rate_pct
+        description: Unemployment rate, quarters pooled.
         tests: [{range: {min: 0, max: 30}}]
+      - name: cpi_inflation_pct
+        description: Change in the annual average general CPI.
+        tests: [{range: {min: -20, max: 50, severity: warn}}]
+      - name: airport_passengers
+        description: Hamad International Airport passengers (years with 12 months).
+      - name: hotel_guests
+        description: Hotel guests (years with 12 months).
+      - name: electricity_gwh
+        description: National electricity consumption in GWh (complete years).
+      - name: electricity_kwh_per_capita
+        description: Electricity kWh per resident.
+      - name: water_litres_per_capita_per_day
+        description: Water litres per resident per day.

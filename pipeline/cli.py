@@ -10,6 +10,7 @@ import time
 from pipeline import __version__
 from pipeline.build import build_warehouse, check_warehouse
 from pipeline.config import ConfigError, Settings, load_catalogue
+from pipeline.docs import DocsError, write_catalog
 from pipeline.extract import ExtractError, extract_all
 from pipeline.load import LoadError
 from pipeline.quality import DataQualityError, QualityConfigError, summarise
@@ -76,6 +77,13 @@ def cmd_run(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def cmd_docs(args: argparse.Namespace, settings: Settings) -> int:
+    catalogue = load_catalogue(settings.sources_file)
+    path = write_catalog(settings, catalogue)
+    print(f"wrote {path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m pipeline",
@@ -104,6 +112,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("test", help="run the data tests against the warehouse")
     p.set_defaults(func=cmd_test)
+
+    p = sub.add_parser("docs", help="write docs/data_catalog.md from the warehouse")
+    p.set_defaults(func=cmd_docs)
     return parser
 
 
@@ -119,6 +130,9 @@ def main(argv: list[str] | None = None) -> int:
     settings = Settings.from_env()
     try:
         return args.func(args, settings)
+    except DocsError as exc:
+        log.error("%s", exc)
+        return 1
     except (ConfigError, QualityConfigError) as exc:
         log.error("configuration problem: %s", exc)
         return 2
