@@ -1,0 +1,14 @@
+.git
+.gitignore
+.gitattributes
+.venv
+venv
+**/__pycache__
+.pytest_cache
+.ruff_cache
+data
+docs
+tests
+scripts
+*.duckdb
+*.md

@@ -1,0 +1,35 @@
+# docker compose up --build
+#
+# 1. `pipeline` downloads the datasets, builds the warehouse and runs the
+#    data tests, writing everything to the qodp-data volume, then exits.
+# 2. `dashboard` starts only if the pipeline succeeded and serves the
+#    Streamlit app on http://localhost:8501, reading the volume read-only.
+#
+# Refresh the data later with: docker compose run --rm pipeline
+
+x-app: &app
+  build: .
+  image: qatar-open-data-pipeline:latest
+  environment:
+    QODP_DATA_DIR: /data
+
+services:
+  pipeline:
+    <<: *app
+    command: ["python", "-m", "pipeline", "run"]
+    volumes:
+      - qodp-data:/data
+
+  dashboard:
+    <<: *app
+    ports:
+      - "8501:8501"
+    volumes:
+      - qodp-data:/data:ro
+    depends_on:
+      pipeline:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  qodp-data:
