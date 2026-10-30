@@ -5,6 +5,7 @@ at other relations with three placeholders:
 
     {{ ref('stg_cpi_monthly') }}   another model   -> staging.stg_cpi_monthly
     {{ source('cpi_monthly') }}    a raw table     -> raw.cpi_monthly
+    {{ source('audit', 'x') }}     another schema  -> audit.x
     {{ seed('months') }}           a lookup table  -> seeds.months
 
 The runner reads the placeholders to work out dependencies, runs the models
@@ -36,7 +37,7 @@ DEFAULT_MATERIALIZATION = {"staging": "view", "intermediate": "view", "marts": "
 
 _NAME = r"\s*['\"]([A-Za-z0-9_]+)['\"]\s*"
 _REF = re.compile(r"\{\{\s*ref\(" + _NAME + r"\)\s*\}\}")
-_SOURCE = re.compile(r"\{\{\s*source\(" + _NAME + r"\)\s*\}\}")
+_SOURCE = re.compile(r"\{\{\s*source\(" + _NAME + r"(?:," + _NAME + r")?\)\s*\}\}")
 _SEED = re.compile(r"\{\{\s*seed\(" + _NAME + r"\)\s*\}\}")
 _ANY_PLACEHOLDER = re.compile(r"\{\{.*?\}\}", re.S)
 _MATERIALIZED = re.compile(r"^--\s*materialized:\s*(\w+)\s*$", re.M | re.I)
@@ -72,6 +73,12 @@ class ModelRun:
     seconds: float
 
 
+def _source_relation(match: re.Match) -> str:
+    """source('cpi') -> raw.cpi, source('audit', 'source_manifest') -> audit.source_manifest."""
+    first, second = match.group(1), match.group(2)
+    return f"{first}.{second}" if second else f"raw.{first}"
+
+
 def _leading_comment(sql: str) -> str:
     lines = []
     for line in sql.splitlines():
@@ -103,7 +110,7 @@ def parse_model(path: Path, layer: str) -> Model:
         sql=sql,
         materialized=materialized,
         refs=tuple(dict.fromkeys(_REF.findall(sql))),
-        sources=tuple(dict.fromkeys(_SOURCE.findall(sql))),
+        sources=tuple(dict.fromkeys(_source_relation(m) for m in _SOURCE.finditer(sql))),
         seeds=tuple(dict.fromkeys(_SEED.findall(sql))),
         description=_leading_comment(sql),
     )
@@ -157,7 +164,7 @@ def upstream_of(models: dict[str, Model], names: list[str]) -> set[str]:
 
 def compile_sql(model: Model, models: dict[str, Model]) -> str:
     sql = _REF.sub(lambda m: models[m.group(1)].relation, model.sql)
-    sql = _SOURCE.sub(lambda m: f"raw.{m.group(1)}", sql)
+    sql = _SOURCE.sub(_source_relation, sql)
     sql = _SEED.sub(lambda m: f"seeds.{m.group(1)}", sql)
     return sql.strip().rstrip(";")
 

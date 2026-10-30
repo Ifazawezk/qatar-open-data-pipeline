@@ -31,12 +31,13 @@ def test_parse_model_reads_placeholders_and_description(tmp_path):
         "-- Second line of the description.\n"
         "-- materialized: table\n"
         "select * from {{ ref('stg_a') }} join {{ seed('months') }} using (m)\n"
-        "union all select * from {{ ref( \"stg_a\" ) }}, {{ source('cpi') }}\n",
+        "union all select * from {{ ref( \"stg_a\" ) }}, {{ source('cpi') }}\n"
+        "cross join {{ source('audit', 'source_manifest') }}\n",
     )
     model = parse_model(path, "intermediate")
     assert model.refs == ("stg_a",)
     assert model.seeds == ("months",)
-    assert model.sources == ("cpi",)
+    assert model.sources == ("raw.cpi", "audit.source_manifest")
     assert model.materialized == "table"
     assert model.description == "Joins prices with months. Second line of the description."
 
@@ -49,9 +50,11 @@ def test_unknown_placeholder_is_an_error(tmp_path):
 
 def test_compile_replaces_placeholders_with_relations(tmp_path):
     add_model(tmp_path, "staging", "stg_a", "select 1 as m from {{ source('cpi') }};")
+    add_model(tmp_path, "staging", "stg_b", "select * from {{ source( 'audit','runs' ) }}")
     add_model(tmp_path, "marts", "fct_a", "select * from {{ ref('stg_a') }}")
     models = discover(tmp_path / "models")
     assert compile_sql(models["stg_a"], models) == "select 1 as m from raw.cpi"
+    assert compile_sql(models["stg_b"], models) == "select * from audit.runs"
     assert compile_sql(models["fct_a"], models) == "select * from staging.stg_a"
 
 
