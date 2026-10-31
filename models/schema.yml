@@ -7,6 +7,11 @@
 #
 # expression tests count rows where the condition is false; rows where it is
 # NULL (missing data) are not counted.
+#
+# anomaly tests warn about sudden month-on-month jumps. Their limits are in
+# config/quality.yml. `by` names the column that separates several series in
+# one table, and the time column is month_start unless `time_column` says
+# otherwise. A warning means "look at this month", not "this number is wrong".
 
 sources:
   # How long ago we last confirmed each raw file with the portal.
@@ -258,6 +263,8 @@ models:
         description: Arabic group name from the source, whitespace normalised.
       - name: cpi_index
         description: Index value, base year 2018 = 100.
+        tests:
+          - anomaly: {by: group_short_name_en}
       - name: mom_change_pct
         description: Change against the previous month, in percent.
       - name: yoy_change_pct
@@ -296,11 +303,13 @@ models:
         description: Departing passengers at Hamad International Airport.
       - name: airport_passengers
         description: Arrivals plus departures (no transit).
-        tests: [{range: {min: 0, max: 10000000}}]
+        tests: [{range: {min: 0, max: 10000000}}, anomaly]
       - name: hotel_guests
         description: Hotel guests in the month.
+        tests: [anomaly]
       - name: hotel_nights
         description: Nights of stay in the month.
+        tests: [anomaly]
       - name: nights_per_guest
         description: Hotel nights divided by hotel guests.
       - name: airport_passengers_yoy_pct

@@ -115,6 +115,11 @@ for numbers and a row count.
 Use `severity: warn` for known problems in the source that should stay
 visible without stopping the pipeline, and leave a comment explaining why.
 
+For a monthly series, add `anomaly` to the tests of its value column to get a
+warning about sudden month-on-month jumps. Add `by: <column>` if one table holds
+several series. The limits are in [`config/quality.yml`](config/quality.yml);
+add an entry there if the defaults do not suit the series.
+
 ### 6. Model it for analysis
 
 Add intermediate models for reshaping or calculations and a mart (or extend
@@ -152,6 +157,12 @@ written findings in `dashboard/insights.py` so they are computed from the data
 and covered by `tests/test_dashboard.py`. Charts use the helpers in
 `dashboard/charts.py`: at most three series per chart, one y axis, and a table
 view under every chart.
+
+The dashboard also runs in Arabic. Wrap text in `tr()` from `dashboard/i18n.py`
+and add the Arabic to the `AR` table there, and use the mart's `_ar` columns for
+labels that come from the data. `tests/test_i18n.py` fails if a string has no
+translation. Unit tests cannot see the layout, so look at a new page in a browser
+at `?lang=ar`.
 
 ## Style
 

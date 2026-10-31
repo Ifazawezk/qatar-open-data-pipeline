@@ -9,8 +9,8 @@
   <img src="https://img.shields.io/badge/python-3.11%2B-2a78d6" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/DuckDB-2.0-2a78d6" alt="DuckDB 2.0">
   <img src="https://img.shields.io/badge/datasets-7%20from%20data.gov.qa-2a78d6" alt="7 datasets from data.gov.qa">
-  <img src="https://img.shields.io/badge/data%20tests-113%20passed%2C%204%20warnings-1baf7a" alt="Data tests: 113 passed, 4 warnings">
-  <img src="https://img.shields.io/badge/unit%20tests-96%20passed-1baf7a" alt="Unit tests: 96 passed">
+  <img src="https://img.shields.io/badge/data%20tests-113%20passed%2C%208%20warnings-1baf7a" alt="Data tests: 113 passed, 8 warnings">
+  <img src="https://img.shields.io/badge/unit%20tests-356%20passed-1baf7a" alt="Unit tests: 356 passed">
   <img src="https://img.shields.io/badge/PRs-welcome-2a78d6" alt="PRs welcome">
 </p>
 
@@ -59,7 +59,7 @@ the population, so they are not household consumption. See the [FAQ](#faq).
 
 ## Pipeline numbers
 
-Measured on a Windows 11 laptop on 30 October 2026.
+Measured on a Windows 11 laptop on 30 October 2026. Test and code counts are from 31 October 2026.
 
 | Measure | Value |
 | --- | --- |
@@ -70,19 +70,21 @@ Measured on a Windows 11 laptop on 30 October 2026.
 | Run with a fresh cache | 0.6 s, no requests |
 | Warehouse size after a fresh build | 6.0 MB |
 | SQL models | 22 (7 staging, 6 intermediate, 9 marts) plus 2 seed tables |
-| Data tests per run | 117: 113 pass, 4 warnings (known source issues), 0 failures |
-| Unit tests | 96, about 7 s, no network access |
-| Code | 720 lines of SQL, about 3,000 lines of Python, 1,370 lines of tests |
+| Data tests per run | 121: 113 pass, 8 warnings (4 known source issues, 4 [sudden-jump checks](#sudden-month-on-month-jumps)), 0 failures |
+| Unit tests | 356, about 31 s, no network access |
+| Code | 720 lines of SQL, about 4,150 lines of Python, 2,220 lines of tests |
 
 ## Screenshots
 
-Real screenshots of the dashboard, taken with `python scripts/screenshots.py`.
+Real screenshots of the dashboard, taken with `python scripts/screenshots.py`
+(add `--lang ar` for Arabic).
 
 | | |
 | --- | --- |
 | <img src="docs/images/overview.png" alt="Overview page" width="420"><br>**Overview**: headline figures, findings, and utility use against population on one indexed axis. | <img src="docs/images/population.png" alt="Population and jobs page" width="420"><br>**Population and jobs**: quarterly population by sex, participation and unemployment. |
 | <img src="docs/images/prices.png" alt="Prices page" width="420"><br>**Prices**: general CPI, monthly inflation and a heatmap of annual inflation by group. | <img src="docs/images/travel.png" alt="Travel and hotels page" width="420"><br>**Travel and hotels**: the 2020 collapse, the recovery and the World Cup month. |
 | <img src="docs/images/utilities.png" alt="Electricity and water page" width="420"><br>**Electricity and water**: national totals, per-resident use and a zone explorer with Arabic names. | <img src="docs/images/pipeline.png" alt="Pipeline health page" width="420"><br>**Pipeline health**: sources, fetch times, file hashes and the latest data test results. |
+| <img src="docs/images/overview-ar.png" alt="Overview page in Arabic" width="420"><br>**Overview in Arabic**: right-to-left layout with Arabic text and labels. | <img src="docs/images/prices-ar.png" alt="Prices page in Arabic" width="420"><br>**Prices in Arabic**: expenditure groups use the Arabic names from the marts. |
 
 ## How it works
 
@@ -95,10 +97,11 @@ flowchart LR
     stg["staging<br/>7 views: types, codes, labels"]
     int["intermediate<br/>6 views: pivots, changes"]
     marts["marts<br/>9 tables: facts and dimensions"]
-    tests{"117 data tests"}
+    tests{"121 data tests"}
     dash["Streamlit dashboard<br/>6 pages"]
     keep["previous warehouse kept"]
     docs["docs/data_catalog.md<br/>columns and lineage"]
+    exports["exports/<br/>Parquet and CSV files"]
 
     portal -- "metadata + CSV export<br/>retries, cache, 1 s pause" --> raw
     raw -- "load, check hash and rows" --> rawdb
@@ -108,6 +111,7 @@ flowchart LR
     tests -- "pass: commit" --> dash
     tests -- "fail: roll back" --> keep
     marts --> docs
+    marts --> exports
 ```
 
 **1. Extract** ([`pipeline/extract.py`](pipeline/extract.py)). For each dataset in
@@ -138,10 +142,11 @@ earlier one.
 | marts | Tables for analysis: facts per month, quarter or year, two dimensions (`dim_month`, `dim_zone`) and a one-row-per-year summary that combines every dataset. | `fct_utilities_national_annual`, `mart_annual_indicators` |
 
 **4. Test** ([`pipeline/quality.py`](pipeline/quality.py), [`models/schema.yml`](models/schema.yml)).
-117 data tests: not null, unique keys, accepted values, ranges, row counts,
+121 data tests: not null, unique keys, accepted values, ranges, row counts,
 relationships, row-level rules (for example population 15+ must equal active
-plus inactive), custom SQL checks and freshness. Tests marked `warn` report
-known problems in the source without stopping the run.
+plus inactive), custom SQL checks, freshness and sudden month-on-month jumps.
+Tests marked `warn` report known problems in the source, or jumps worth a look,
+without stopping the run.
 
 The whole build follows a **write, audit, publish** pattern: loading, all 22
 models and all tests run inside one DuckDB transaction, and the transaction is
@@ -151,9 +156,18 @@ the last good data. Test results are stored in `audit.check_results` either way.
 
 **5. Present.** The [Streamlit dashboard](dashboard) reads only the marts. Each
 chart has a "Show the numbers" table under it, and the written findings on each
-page are computed from the data when the page loads.
+page are computed from the data when the page loads. A switch in the sidebar
+changes the whole dashboard between English and [Arabic](#arabic-mode).
 [`docs/data_catalog.md`](docs/data_catalog.md) is generated from the warehouse
 and lists every model, column, type and test, with a lineage graph.
+
+**6. Export** ([`pipeline/export.py`](pipeline/export.py)). `python -m pipeline export`
+writes each mart to `exports/` as Parquet and as CSV. Parquet keeps the column
+types; the CSV files are UTF-8 with a byte order mark, which is what Excel needs
+to show Arabic. [`docs/power-bi.md`](docs/power-bi.md) explains how to load them
+into Power BI, with suggested relationships and measures. The files were checked
+by reading them back with DuckDB and Python. They have not been opened in Power
+BI or Excel, and the guide has not been tested in Power BI.
 
 ## Quick start
 
@@ -169,6 +183,7 @@ python tasks.py setup             # pip install -r requirements-dev.txt
 
 python -m pipeline run            # download, build and test (about a minute)
 python tasks.py dashboard         # open http://localhost:8501
+                                  # or http://localhost:8501/?lang=ar for Arabic
 ```
 
 The pipeline commands:
@@ -180,6 +195,7 @@ The pipeline commands:
 | `python -m pipeline transform` | Load raw files and build the models (no tests). `--select fct_cpi_monthly` builds one model and its parents. |
 | `python -m pipeline test` | Run the data tests against the current warehouse. Exits with code 1 on failure. |
 | `python -m pipeline docs` | Regenerate `docs/data_catalog.md`. |
+| `python -m pipeline export` | Write every mart to `exports/` as Parquet and CSV. `--out DIR` writes somewhere else. |
 | `python -m pipeline sources` | List the configured datasets. |
 
 Development tasks: `python tasks.py test` (pytest), `python tasks.py lint`
@@ -195,6 +211,46 @@ docker compose run --rm pipeline  # refresh the data later
 The `pipeline` service writes to a named volume and exits; the `dashboard`
 service only starts if the pipeline finished successfully and mounts the volume
 read-only.
+
+## Arabic mode
+
+The language switch at the bottom of the sidebar turns the dashboard into Arabic
+with a right-to-left layout. Adding `?lang=ar` to the address opens it that way.
+The choice stays when you change page.
+
+- **Labels from the data** come straight from the marts: month names, expenditure
+  group names, zone names and sex.
+- **Interface text** (titles, captions, axis labels, written findings) is in
+  [`dashboard/i18n.py`](dashboard/i18n.py). A unit test fails if any text in the
+  dashboard has no Arabic version. The English text is unchanged.
+- **Written findings** are built from the data in Arabic too, so they stay right
+  when the portal publishes new figures.
+
+Some things stay as they are:
+
+- Numbers use Western digits (1, 2, 3), as the source data does.
+- Time on charts still runs from left to right. Titles, legends and ranked bars
+  move to the right.
+- Dates on chart axes are digits (2022-12), because the chart library would
+  otherwise print English month names.
+- On the Pipeline health page, test results and dataset titles stay in English,
+  because that is how they are stored, and so do the model names.
+- Streamlit's own menu and messages stay in English.
+
+How it was checked, and what was not:
+
+- The unit tests run every page in Arabic, but they cannot see the layout.
+- The layout was checked by hand in headless Microsoft Edge at 1280 and 390
+  pixels wide: alignment, dropdowns, the year slider, the sidebar, the language
+  switch, changing page and reloading. It has not been tried in other browsers,
+  on a real phone, or with a screen reader.
+- The interface translation has not been reviewed by a professional translator,
+  so please report anything that reads badly.
+- Streamlit has no right-to-left setting, so this works through CSS that depends
+  on how Streamlit 1.66 builds its pages. A Streamlit upgrade can break it, so
+  check the Arabic pages in a browser after upgrading.
+- On a narrow screen, a wide table in Arabic opens at its last columns, and you
+  scroll to reach the first.
 
 ## Datasets
 
@@ -237,20 +293,61 @@ The pipeline keeps these visible instead of hiding them:
   [data catalog](docs/data_catalog.md) lists the portal's own English and Arabic
   label for every raw column.
 
+### Sudden month-on-month jumps
+
+Anomaly checks compare each month with the calendar month before it. A month is
+flagged when the move is larger than a set limit and also several times the
+usual move for that series, because a 5% move is ordinary for airport passengers
+and rare for the general price index. The limits are in
+[`config/quality.yml`](config/quality.yml).
+
+The checks cover total airport passengers, hotel guests, hotel nights and the 13
+CPI series. On the data downloaded on 31 October 2026 they flagged 17 of 1,112
+monthly changes:
+
+| Series | Flagged months | What the data shows |
+| --- | --- | --- |
+| Airport passengers | 2020-03 -42.6%, 2020-04 -87.9%, 2020-06 +119.9%, 2020-07 +73.2%, 2021-07 +43.0% | The 2020 falls and rises are during the pandemic. The rises start from a very low base: June 2020 is 279,338 passengers against 127,044 in May. |
+| Hotel guests | 2022-05 +54.4%, 2022-12 +55.5% | May follows a 37.1% fall in April and is close to the March level. December is a World Cup month. |
+| Hotel nights | 2022-12 +48.1% | The same month as the jump in guests. |
+| CPI: Communication | 2023-04 +16.4%, 2024-01 -11.9%, 2024-06 +9.3%, 2024-08 +9.2% | This index usually moves about 0.2% a month, and the level stays after each jump, so these look like steps rather than spikes. |
+| CPI: Recreation | 2023-01 -17.2%, 2025-01 -14.9% | This group has fallen every January since 2022 and risen every December, so these look seasonal. |
+| CPI: Restaurants and hotels | 2022-11 +7.6%, 2023-01 -6.2% | The rise is around the World Cup, and the index was back below its October 2022 level by March 2023. |
+| CPI: Tobacco | 2020-02 +8.4% | The only change in this index from January 2020 to December 2025 (227 to 246). |
+
+A flag means "look at this month". It does not show that a number is wrong, and
+none of these has been confirmed as an error or explained by the publishers. The
+right-hand column describes the data and the calendar; it does not give causes.
+
+The check has clear limits:
+
+- It cannot tell a real event from a mistake in the source.
+- It does not adjust for seasons or holidays such as Ramadan and Eid, which
+  move through the calendar.
+- The limits were chosen after looking at this same data, so the number of flags
+  says little on its own.
+- It only finds sudden moves. The hotel nights problem listed above is not
+  flagged, because neither column jumps; a separate test catches it.
+- It covers monthly series only, not the quarterly labour figures.
+
+The general CPI index had no flags; its largest monthly move was 2.6%.
+
 ## Project structure
 
 ```
 config/sources.yml      datasets to download and their column contracts
-pipeline/               extract, load, model runner, data tests, docs, CLI
+config/quality.yml      limits for the anomaly checks
+pipeline/               extract, load, model runner, data tests, docs, export, CLI
 models/staging/         one SQL file per model ...
 models/intermediate/
 models/marts/
 models/schema.yml       data tests and column descriptions
 seeds/                  small lookup tables (months, CPI groups)
-dashboard/              Streamlit app: app.py, views/, charts, findings
+dashboard/              Streamlit app: app.py, views/, charts, findings, translations
 tests/                  pytest suite and trimmed real-data fixtures
 scripts/                fixtures, screenshots and banner helpers
-docs/                   generated data catalog and images
+docs/                   generated data catalog, Power BI guide and images
+exports/                generated Parquet and CSV files (not in git)
 tasks.py                cross-platform task runner
 Dockerfile, docker-compose.yml
 ```
@@ -263,12 +360,12 @@ Dockerfile, docker-compose.yml
 - [x] Generated data catalog with lineage
 - [x] Dashboard with written findings and table views
 - [x] Docker setup
+- [x] Anomaly checks on monthly series (sudden jumps reported as warnings)
+- [x] Arabic interface for the dashboard (right-to-left layout)
+- [x] Export the marts to Parquet and CSV for use in Power BI or Excel
 - [ ] Scheduled refresh (Windows Task Scheduler or a CI job) with a change log of what the portal updated
 - [ ] More datasets: GDP by activity, vehicle registrations, births and deaths
-- [ ] Arabic interface for the dashboard (right-to-left layout)
 - [ ] Zone-level population from the 2020 census for per-resident figures by zone
-- [ ] Export the marts to Parquet for use in Power BI or Excel
-- [ ] Anomaly checks on monthly series (sudden jumps reported as warnings)
 
 ## FAQ
 

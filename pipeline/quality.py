@@ -5,12 +5,14 @@ Every check turns into one SQL query. Most count the rows that break a rule
 
 Supported checks:
 
-    column level   not_null, unique, accepted_values, range, relationships
+    column level   not_null, unique, accepted_values, range, relationships, anomaly
     model level    unique (several columns), row_count, expression, query, freshness
     sources        freshness of the raw files (from the extract manifest)
 
 Each check can set `severity: warn`. Warnings are printed but do not fail the
-run; anything at the default `error` severity does.
+run; anything at the default `error` severity does. Anomaly checks default to
+`warn`, because a sudden jump can be a real event. Their limits are in
+config/quality.yml.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ from pipeline.transform import Model, compile_sql
 log = logging.getLogger(__name__)
 
 SEVERITIES = ("error", "warn")
+ANOMALY_LIMITS = ("max_change_pct", "min_history_months", "typical_multiple")
 
 
 class QualityConfigError(ValueError):
@@ -119,13 +122,84 @@ def _freshness(
     return evaluate
 
 
+def _no_jumps(limit: float) -> Callable[[Any], tuple[bool, str]]:
+    def evaluate(jumps: Any) -> tuple[bool, str]:
+        if not jumps:
+            return True, f"no month moved more than {limit}%"
+        listed = ", ".join(
+            " ".join(filter(None, [j["series"], j["month"], f"{j['change_pct']:+.1f}%"]))
+            for j in jumps
+        )
+        months = "1 month" if len(jumps) == 1 else f"{len(jumps)} months"
+        return False, f"{months} moved more than {limit}% on the previous month: {listed}"
+
+    return evaluate
+
+
+def _anomaly_sql(
+    relation: str, column: str, time_column: str, by: str | None, limits: dict[str, float]
+) -> str:
+    """One value: a list of the flagged months, or NULL when there are none.
+
+    Each month is joined to the calendar month before it, never to the row
+    before it, so a gap in the data gives no comparison instead of a wrong one.
+    A previous value of zero has no percentage change and is skipped.
+    """
+    series = by or "cast(null as varchar)"
+    return f"""
+        with points as (
+            select {time_column} as month, {series} as series, {column} as value
+            from {relation}
+            where {column} is not null
+        ),
+        changes as (
+            select
+                cur.month,
+                cur.series,
+                100.0 * (cur.value / prev.value - 1) as change_pct
+            from points as cur
+            join points as prev
+                on prev.month = cur.month - interval 1 month
+                and prev.series is not distinct from cur.series
+            where prev.value > 0
+        ),
+        usual as (
+            select series, median(abs(change_pct)) as typical, count(*) as months
+            from changes
+            group by series
+        )
+        select list(
+            {{
+                'month': strftime(changes.month, '%Y-%m'),
+                'series': changes.series,
+                'change_pct': changes.change_pct
+            }}
+            order by changes.month, changes.series
+        )
+        from changes
+        join usual on usual.series is not distinct from changes.series
+        where abs(changes.change_pct) > {_literal(limits["max_change_pct"])}
+            and (
+                usual.months < {_literal(limits["min_history_months"])}
+                or abs(changes.change_pct) > {_literal(limits["typical_multiple"])} * usual.typical
+            )
+    """
+
+
 class _Builder:
     """Turns the YAML entries for one model into Check objects."""
 
-    def __init__(self, model: Model, models: dict[str, Model], today: date):
+    def __init__(
+        self,
+        model: Model,
+        models: dict[str, Model],
+        today: date,
+        anomaly_limits: dict | None = None,
+    ):
         self.model = model
         self.models = models
         self.today = today
+        self.anomaly_limits = anomaly_limits or {}
         self.rel = model.relation
         self.checks: list[Check] = []
 
@@ -138,7 +212,7 @@ class _Builder:
 
     def column_check(self, column: str, spec: Any) -> None:
         kind, args = _split(spec)
-        severity = args.pop("severity", "error")
+        severity = args.pop("severity", "warn" if kind == "anomaly" else "error")
         rel = self.rel
         if kind == "not_null":
             sql = f"select count(*) from {rel} where {column} is null"
@@ -174,6 +248,11 @@ class _Builder:
             )
             what = f"rows without a match in {args['to']}.{parent_field}"
             self.add(kind, sql, _count_is_zero(what), severity, column)
+        elif kind == "anomaly":
+            limits = self._limits_for(column)
+            time_column = args.get("time_column", "month_start")
+            sql = _anomaly_sql(rel, column, time_column, args.get("by"), limits)
+            self.add(kind, sql, _no_jumps(limits["max_change_pct"]), severity, column)
         else:
             raise QualityConfigError(f"{self.model.name}.{column}: unknown check '{kind}'")
 
@@ -222,6 +301,18 @@ class _Builder:
         else:
             raise QualityConfigError(f"{self.model.name}: unknown check '{kind}'")
 
+    def _limits_for(self, column: str) -> dict[str, float]:
+        key = f"{self.model.name}.{column}"
+        limits = {**self.anomaly_limits.get("defaults", {}), **self.anomaly_limits.get(key, {})}
+        if sorted(limits) != sorted(ANOMALY_LIMITS):
+            raise QualityConfigError(
+                f"{key}: anomaly limits must set {', '.join(ANOMALY_LIMITS)}, got {sorted(limits)}"
+            )
+        for name, value in limits.items():
+            if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
+                raise QualityConfigError(f"{key}: {name} must be a positive number, got {value!r}")
+        return limits
+
     def _relation(self, name: str) -> str:
         if name not in self.models:
             raise QualityConfigError(f"{self.model.name}: relationships to unknown model '{name}'")
@@ -253,23 +344,35 @@ def _split(spec: Any) -> tuple[str, Any]:
 
 
 def load_schema(path: Path) -> dict:
+    """Read models/schema.yml and add the limits from config/quality.yml, if it exists."""
     with path.open(encoding="utf-8") as fh:
-        return yaml.safe_load(fh) or {}
+        schema = yaml.safe_load(fh) or {}
+    limits_file = path.parent.parent / "config" / "quality.yml"
+    if limits_file.exists():
+        with limits_file.open(encoding="utf-8") as fh:
+            schema["limits"] = yaml.safe_load(fh) or {}
+    return schema
 
 
 def build_checks(schema: dict, models: dict[str, Model], today: date) -> list[Check]:
     checks: list[Check] = []
+    anomaly_limits = (schema.get("limits") or {}).get("anomaly") or {}
     for entry in schema.get("models", []):
         name = entry["name"]
         if name not in models:
             raise QualityConfigError(f"schema.yml describes unknown model '{name}'")
-        builder = _Builder(models[name], models, today)
+        builder = _Builder(models[name], models, today, anomaly_limits)
         for spec in entry.get("tests", []):
             builder.model_check(spec)
         for column in entry.get("columns", []):
             for spec in column.get("tests", []):
                 builder.column_check(column["name"], spec)
         checks.extend(builder.checks)
+
+    declared = {f"{c.model}.{c.column}" for c in checks if c.kind == "anomaly"}
+    unused = sorted(set(anomaly_limits) - declared - {"defaults"})
+    if unused:
+        raise QualityConfigError(f"anomaly limits for checks that do not exist: {unused}")
 
     source_rules = (schema.get("sources") or {}).get("freshness")
     if source_rules:

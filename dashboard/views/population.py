@@ -1,14 +1,17 @@
 import streamlit as st
 
 from dashboard import charts, data, insights, ui
+from dashboard.i18n import localised, tr
 
-st.title("Population and jobs")
-st.caption("Quarterly Labour Force Survey estimates by sex.")
+st.title(tr("Population and jobs"))
+st.caption(tr("Quarterly Labour Force Survey estimates by sex."))
 
 annual = data.annual()
 labour = data.labour()
 
 ui.findings(insights.population(annual) + insights.labour(annual, labour))
+
+sex_names = labour.drop_duplicates("sex").set_index("sex")[localised("sex_en", "sex_ar")]
 
 by_sex = labour.pivot_table(
     index=["quarter_start", "quarter_label"], columns="sex", values="population"
@@ -19,9 +22,9 @@ with left:
     fig = charts.lines(
         by_sex,
         "quarter_start",
-        {"Male": "male", "Female": "female"},
-        "Population by sex",
-        "People",
+        {sex_names["male"]: "male", sex_names["female"]: "female"},
+        tr("Population by sex"),
+        tr("People"),
     )
     ui.chart(fig, by_sex.drop(columns="quarter_start"))
 
@@ -32,9 +35,9 @@ with right:
     fig = charts.lines(
         rates,
         "quarter_start",
-        {"Male": "male", "Female": "female", "Total": "total"},
-        "Labour force participation, age 15+",
-        "% of population 15+",
+        {sex_names[sex]: sex for sex in ("male", "female", "total")},
+        tr("Labour force participation, age 15+"),
+        tr("% of population 15+"),
         value_format=".1f",
         from_zero=False,
     )
@@ -48,7 +51,7 @@ with left:
         growth,
         "year",
         "population_growth_pct",
-        "Population growth on the previous year",
+        tr("Population growth on the previous year"),
         "%",
         value_format="+.1f",
         y_format=".1f",
@@ -62,12 +65,14 @@ with right:
     fig = charts.lines(
         unemployment,
         "quarter_start",
-        {"Unemployment rate": "unemployment_rate_pct"},
-        "Unemployment rate",
-        "% of labour force",
+        {tr("Unemployment rate"): "unemployment_rate_pct"},
+        tr("Unemployment rate"),
+        tr("% of labour force"),
         value_format=".2f",
         y_format=".2f",
     )
     ui.chart(fig, unemployment.drop(columns="quarter_start"))
 
-ui.sources(("Population and Labor Force by Sex", "population-and-labour-force-by-gender-quarterly"))
+ui.sources(
+    (tr("Population and Labor Force by Sex"), "population-and-labour-force-by-gender-quarterly")
+)

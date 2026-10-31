@@ -15,19 +15,22 @@ if str(ROOT) not in sys.path:
 
 import streamlit as st
 
-from dashboard import data
+from dashboard import data, ui
+from dashboard.i18n import tr
 
-st.set_page_config(page_title="Qatar Open Data", layout="wide")
+ui.start_language()
+st.set_page_config(page_title=tr("Qatar Open Data"), layout="wide")
+ui.apply_direction()
 
 PAGES = [
-    st.Page("views/overview.py", title="Overview", icon=":material/dashboard:", default=True),
-    st.Page("views/population.py", title="Population and jobs", icon=":material/groups:"),
-    st.Page("views/prices.py", title="Prices", icon=":material/sell:"),
-    st.Page("views/travel.py", title="Travel and hotels", icon=":material/flight:"),
-    st.Page("views/utilities.py", title="Electricity and water", icon=":material/bolt:"),
+    st.Page("views/overview.py", title=tr("Overview"), icon=":material/dashboard:", default=True),
+    st.Page("views/population.py", title=tr("Population and jobs"), icon=":material/groups:"),
+    st.Page("views/prices.py", title=tr("Prices"), icon=":material/sell:"),
+    st.Page("views/travel.py", title=tr("Travel and hotels"), icon=":material/flight:"),
+    st.Page("views/utilities.py", title=tr("Electricity and water"), icon=":material/bolt:"),
     st.Page(
         "views/pipeline_health.py",
-        title="Pipeline health",
+        title=tr("Pipeline health"),
         icon=":material/fact_check:",
         url_path="pipeline",
     ),
@@ -35,9 +38,12 @@ PAGES = [
 
 navigation = st.navigation(PAGES)
 with st.sidebar:
+    ui.language_switch()
     st.caption(
-        "Data from the [Qatar Open Data Portal](https://www.data.gov.qa) (CC BY 4.0), "
-        "refreshed with `python -m pipeline run`."
+        tr(
+            "Data from the [Qatar Open Data Portal](https://www.data.gov.qa) (CC BY 4.0), "
+            "refreshed with `python -m pipeline run`."
+        )
     )
 data.require_warehouse()
 navigation.run()

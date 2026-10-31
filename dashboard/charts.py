@@ -8,12 +8,18 @@ Colour rules used throughout:
 - inflation uses a diverging blue / grey / red scale centred on zero
 - text stays in ink colours, never in a series colour
 - one y axis per chart; two measures with different units get two charts
+
+In Arabic mode titles, legends and ranked bars move to the right, and dates show
+digits only because Plotly would print English month names. Time still runs
+left to right.
 """
 
 from __future__ import annotations
 
 import pandas as pd
 import plotly.graph_objects as go
+
+from dashboard.i18n import is_arabic
 
 FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 SERIES = ("#2a78d6", "#eb6834", "#1baf7a")
@@ -75,7 +81,18 @@ def style(
         title={"text": y_title, "font": {"color": MUTED}},
         rangemode="tozero" if from_zero else "normal",
     )
+    if is_arabic():
+        fig.update_layout(
+            title={"x": 1, "xanchor": "right", "pad": {"r": 16}},
+            legend={"x": 1, "xanchor": "right"},
+            hoverlabel={"align": "right"},
+        )
     return fig
+
+
+def _digits_only_dates(fig: go.Figure, values: pd.Series) -> None:
+    if is_arabic() and pd.api.types.is_datetime64_any_dtype(values):
+        fig.update_xaxes(tickformat="%Y", dtick="M12", hoverformat="%Y-%m")
 
 
 def lines(
@@ -118,7 +135,8 @@ def lines(
             )
     style(fig, title, y_title, y_format=y_format, from_zero=from_zero)
     if label_ends and len(series) > 1:
-        fig.update_layout(margin={"r": 72})
+        fig.update_layout(margin={"r": 124 if is_arabic() else 72})
+    _digits_only_dates(fig, df[x])
     return fig
 
 
@@ -134,6 +152,8 @@ def bars(
     name: str = "",
 ) -> go.Figure:
     """Single-series bars; rows flagged in `muted` (for example partial years) are grey."""
+    if is_arabic() and y_format == "~s":
+        y_format = ","  # SI suffixes such as M are Latin letters
     flags = list(muted) if muted is not None else [False] * len(df)
     colors = [PARTIAL if flag else SERIES[0] for flag in flags]
     fig = go.Figure(
@@ -149,6 +169,7 @@ def bars(
     if df[x].dtype == object:  # labels such as years as text: show every one
         fig.update_xaxes(type="category")
         fig.update_layout(bargap=0.4)
+    _digits_only_dates(fig, df[x])
     return fig
 
 
@@ -178,6 +199,9 @@ def hbars(
     )
     fig.update_yaxes(showgrid=False, tickfont={"color": INK_SECONDARY}, title=None)
     fig.update_layout(bargap=0.3)
+    if is_arabic():  # bars grow from the labels on the right
+        fig.update_xaxes(autorange="reversed")
+        fig.update_yaxes(side="right")
     return fig
 
 
@@ -206,6 +230,9 @@ def diverging_heatmap(
         autorange="reversed", showgrid=False, ticks="", tickfont={"color": INK_SECONDARY}
     )
     fig.update_xaxes(type="category", ticks="")
+    if is_arabic():
+        fig.update_yaxes(side="right")
+        fig.update_traces(colorbar={"x": -0.02, "xanchor": "right"})
     return fig
 
 

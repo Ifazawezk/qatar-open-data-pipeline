@@ -86,6 +86,10 @@ class Settings:
         return self.raw_dir / "manifest.json"
 
     @property
+    def exports_dir(self) -> Path:
+        return self.root / "exports"
+
+    @property
     def sources_file(self) -> Path:
         return self.root / "config" / "sources.yml"
 

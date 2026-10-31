@@ -42,3 +42,12 @@ def relation_exists(con: duckdb.DuckDBPyConnection, schema: str, name: str) -> s
         [schema, name],
     ).fetchone()
     return row[0] if row else None
+
+
+def table_columns(con: duckdb.DuckDBPyConnection, schema: str, name: str) -> list[tuple[str, str]]:
+    """(column name, data type) pairs in table order; empty when the table does not exist."""
+    return con.execute(
+        "select column_name, data_type from information_schema.columns "
+        "where table_schema = ? and table_name = ? order by ordinal_position",
+        [schema, name],
+    ).fetchall()
