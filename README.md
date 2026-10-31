@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/DuckDB-2.0-2a78d6" alt="DuckDB 2.0">
   <img src="https://img.shields.io/badge/datasets-7%20from%20data.gov.qa-2a78d6" alt="7 datasets from data.gov.qa">
   <img src="https://img.shields.io/badge/data%20tests-113%20passed%2C%208%20warnings-1baf7a" alt="Data tests: 113 passed, 8 warnings">
-  <img src="https://img.shields.io/badge/unit%20tests-156%20passed-1baf7a" alt="Unit tests: 156 passed">
+  <img src="https://img.shields.io/badge/unit%20tests-356%20passed-1baf7a" alt="Unit tests: 356 passed">
   <img src="https://img.shields.io/badge/PRs-welcome-2a78d6" alt="PRs welcome">
 </p>
 
@@ -59,7 +59,7 @@ the population, so they are not household consumption. See the [FAQ](#faq).
 
 ## Pipeline numbers
 
-Measured on a Windows 11 laptop on 30 October 2026.
+Measured on a Windows 11 laptop on 30 October 2026. Test and code counts are from 31 October 2026.
 
 | Measure | Value |
 | --- | --- |
@@ -71,18 +71,20 @@ Measured on a Windows 11 laptop on 30 October 2026.
 | Warehouse size after a fresh build | 6.0 MB |
 | SQL models | 22 (7 staging, 6 intermediate, 9 marts) plus 2 seed tables |
 | Data tests per run | 121: 113 pass, 8 warnings (4 known source issues, 4 [sudden-jump checks](#sudden-month-on-month-jumps)), 0 failures |
-| Unit tests | 156, about 11 s, no network access |
-| Code | 720 lines of SQL, about 3,000 lines of Python, 1,370 lines of tests |
+| Unit tests | 356, about 31 s, no network access |
+| Code | 720 lines of SQL, about 4,150 lines of Python, 2,220 lines of tests |
 
 ## Screenshots
 
-Real screenshots of the dashboard, taken with `python scripts/screenshots.py`.
+Real screenshots of the dashboard, taken with `python scripts/screenshots.py`
+(add `--lang ar` for Arabic).
 
 | | |
 | --- | --- |
 | <img src="docs/images/overview.png" alt="Overview page" width="420"><br>**Overview**: headline figures, findings, and utility use against population on one indexed axis. | <img src="docs/images/population.png" alt="Population and jobs page" width="420"><br>**Population and jobs**: quarterly population by sex, participation and unemployment. |
 | <img src="docs/images/prices.png" alt="Prices page" width="420"><br>**Prices**: general CPI, monthly inflation and a heatmap of annual inflation by group. | <img src="docs/images/travel.png" alt="Travel and hotels page" width="420"><br>**Travel and hotels**: the 2020 collapse, the recovery and the World Cup month. |
 | <img src="docs/images/utilities.png" alt="Electricity and water page" width="420"><br>**Electricity and water**: national totals, per-resident use and a zone explorer with Arabic names. | <img src="docs/images/pipeline.png" alt="Pipeline health page" width="420"><br>**Pipeline health**: sources, fetch times, file hashes and the latest data test results. |
+| <img src="docs/images/overview-ar.png" alt="Overview page in Arabic" width="420"><br>**Overview in Arabic**: right-to-left layout with Arabic text and labels. | <img src="docs/images/prices-ar.png" alt="Prices page in Arabic" width="420"><br>**Prices in Arabic**: expenditure groups use the Arabic names from the marts. |
 
 ## How it works
 
@@ -154,7 +156,8 @@ the last good data. Test results are stored in `audit.check_results` either way.
 
 **5. Present.** The [Streamlit dashboard](dashboard) reads only the marts. Each
 chart has a "Show the numbers" table under it, and the written findings on each
-page are computed from the data when the page loads.
+page are computed from the data when the page loads. A switch in the sidebar
+changes the whole dashboard between English and [Arabic](#arabic-mode).
 [`docs/data_catalog.md`](docs/data_catalog.md) is generated from the warehouse
 and lists every model, column, type and test, with a lineage graph.
 
@@ -180,6 +183,7 @@ python tasks.py setup             # pip install -r requirements-dev.txt
 
 python -m pipeline run            # download, build and test (about a minute)
 python tasks.py dashboard         # open http://localhost:8501
+                                  # or http://localhost:8501/?lang=ar for Arabic
 ```
 
 The pipeline commands:
@@ -207,6 +211,46 @@ docker compose run --rm pipeline  # refresh the data later
 The `pipeline` service writes to a named volume and exits; the `dashboard`
 service only starts if the pipeline finished successfully and mounts the volume
 read-only.
+
+## Arabic mode
+
+The language switch at the bottom of the sidebar turns the dashboard into Arabic
+with a right-to-left layout. Adding `?lang=ar` to the address opens it that way.
+The choice stays when you change page.
+
+- **Labels from the data** come straight from the marts: month names, expenditure
+  group names, zone names and sex.
+- **Interface text** (titles, captions, axis labels, written findings) is in
+  [`dashboard/i18n.py`](dashboard/i18n.py). A unit test fails if any text in the
+  dashboard has no Arabic version. The English text is unchanged.
+- **Written findings** are built from the data in Arabic too, so they stay right
+  when the portal publishes new figures.
+
+Some things stay as they are:
+
+- Numbers use Western digits (1, 2, 3), as the source data does.
+- Time on charts still runs from left to right. Titles, legends and ranked bars
+  move to the right.
+- Dates on chart axes are digits (2022-12), because the chart library would
+  otherwise print English month names.
+- On the Pipeline health page, test results and dataset titles stay in English,
+  because that is how they are stored, and so do the model names.
+- Streamlit's own menu and messages stay in English.
+
+How it was checked, and what was not:
+
+- The unit tests run every page in Arabic, but they cannot see the layout.
+- The layout was checked by hand in headless Microsoft Edge at 1280 and 390
+  pixels wide: alignment, dropdowns, the year slider, the sidebar, the language
+  switch, changing page and reloading. It has not been tried in other browsers,
+  on a real phone, or with a screen reader.
+- The interface translation has not been reviewed by a professional translator,
+  so please report anything that reads badly.
+- Streamlit has no right-to-left setting, so this works through CSS that depends
+  on how Streamlit 1.66 builds its pages. A Streamlit upgrade can break it, so
+  check the Arabic pages in a browser after upgrading.
+- On a narrow screen, a wide table in Arabic opens at its last columns, and you
+  scroll to reach the first.
 
 ## Datasets
 
@@ -299,7 +343,7 @@ models/intermediate/
 models/marts/
 models/schema.yml       data tests and column descriptions
 seeds/                  small lookup tables (months, CPI groups)
-dashboard/              Streamlit app: app.py, views/, charts, findings
+dashboard/              Streamlit app: app.py, views/, charts, findings, translations
 tests/                  pytest suite and trimmed real-data fixtures
 scripts/                fixtures, screenshots and banner helpers
 docs/                   generated data catalog, Power BI guide and images
@@ -317,10 +361,10 @@ Dockerfile, docker-compose.yml
 - [x] Dashboard with written findings and table views
 - [x] Docker setup
 - [x] Anomaly checks on monthly series (sudden jumps reported as warnings)
+- [x] Arabic interface for the dashboard (right-to-left layout)
 - [x] Export the marts to Parquet and CSV for use in Power BI or Excel
 - [ ] Scheduled refresh (Windows Task Scheduler or a CI job) with a change log of what the portal updated
 - [ ] More datasets: GDP by activity, vehicle registrations, births and deaths
-- [ ] Arabic interface for the dashboard (right-to-left layout)
 - [ ] Zone-level population from the 2020 census for per-resident figures by zone
 
 ## FAQ

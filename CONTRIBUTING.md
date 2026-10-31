@@ -158,6 +158,12 @@ and covered by `tests/test_dashboard.py`. Charts use the helpers in
 `dashboard/charts.py`: at most three series per chart, one y axis, and a table
 view under every chart.
 
+The dashboard also runs in Arabic. Wrap text in `tr()` from `dashboard/i18n.py`
+and add the Arabic to the `AR` table there, and use the mart's `_ar` columns for
+labels that come from the data. `tests/test_i18n.py` fails if a string has no
+translation. Unit tests cannot see the layout, so look at a new page in a browser
+at `?lang=ar`.
+
 ## Style
 
 - Python is formatted and linted with ruff (`python tasks.py format`).

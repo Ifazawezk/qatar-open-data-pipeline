@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from dashboard.i18n import localised, tr, zone_label
+
 
 def pct(value: float, signed: bool = True) -> str:
     return f"{value:+.1f}%" if signed else f"{value:.1f}%"
@@ -16,11 +18,12 @@ def pct(value: float, signed: bool = True) -> str:
 
 def change(value: float) -> str:
     """'grew 4.2%' or 'fell 4.2%'."""
-    return f"{'grew' if value >= 0 else 'fell'} {abs(value):.1f}%"
+    size = f"{abs(value):.1f}"
+    return tr("grew {value}%", value=size) if value >= 0 else tr("fell {value}%", value=size)
 
 
 def millions(value: float, digits: int = 2) -> str:
-    return f"{value / 1e6:,.{digits}f} million"
+    return tr("{value} million", value=f"{value / 1e6:,.{digits}f}")
 
 
 def _by_year(df: pd.DataFrame, column: str) -> pd.DataFrame:
@@ -36,16 +39,23 @@ def population(annual: pd.DataFrame) -> list[str]:
     if pop.empty:
         return out
     year = int(pop.year.iloc[-1])
-    text = f"Qatar's average population was {millions(pop.avg_population.iloc[-1])} in {year}"
+    text = tr(
+        "Qatar's average population was {value} in {year}",
+        value=millions(pop.avg_population.iloc[-1]),
+        year=year,
+    )
     growth = pop.population_growth_pct.iloc[-1]
     if pd.notna(growth):
-        text += f", {pct(growth)} on {year - 1}"
+        text += tr(", {change} on {year}", change=pct(growth), year=year - 1)
     out.append(text + ".")
     drops = pop[pop.population_growth_pct < 0]
     if len(drops) == 1:
         out.append(
-            f"The only year-on-year fall in the series was {int(drops.year.iloc[0])} "
-            f"({pct(drops.population_growth_pct.iloc[0])})."
+            tr(
+                "The only year-on-year fall in the series was {year} ({change}).",
+                year=int(drops.year.iloc[0]),
+                change=pct(drops.population_growth_pct.iloc[0]),
+            )
         )
     return out
 
@@ -57,36 +67,60 @@ def labour(annual: pd.DataFrame, quarterly: pd.DataFrame) -> list[str]:
         first = female.female_participation_rate_pct.iloc[0]
         last = female.female_participation_rate_pct.iloc[-1]
         out.append(
-            f"Female labour force participation went from {pct(first, False)} in "
-            f"{female.year.iloc[0]} to {pct(last, False)} in {female.year.iloc[-1]} "
-            f"({last - first:+.1f} points)."
+            tr(
+                "Female labour force participation went from {first} in {first_year} to {last} "
+                "in {last_year} ({change} points).",
+                first=pct(first, False),
+                first_year=female.year.iloc[0],
+                last=pct(last, False),
+                last_year=female.year.iloc[-1],
+                change=f"{last - first:+.1f}",
+            )
         )
     unemployment = _by_year(annual, "unemployment_rate_pct")
     if not unemployment.empty:
         low = unemployment.unemployment_rate_pct.min()
         high = unemployment.unemployment_rate_pct.max()
         out.append(
-            f"Unemployment stayed between {low:.2f}% and {high:.2f}% in every full year "
-            "of the survey."
+            tr(
+                "Unemployment stayed between {low}% and {high}% in every full year of the survey.",
+                low=f"{low:.2f}",
+                high=f"{high:.2f}",
+            )
         )
     if not quarterly.empty:
         last_q = quarterly[quarterly.quarter_start == quarterly.quarter_start.max()]
         by_sex = last_q.set_index("sex")["population"]
         if {"male", "total"} <= set(by_sex.index):
             share = 100 * by_sex["male"] / by_sex["total"]
-            out.append(f"Men are {share:.0f}% of the population ({last_q.quarter_label.iloc[0]}).")
+            out.append(
+                tr(
+                    "Men are {share}% of the population ({quarter}).",
+                    share=f"{share:.0f}",
+                    quarter=last_q.quarter_label.iloc[0],
+                )
+            )
     return out
 
 
 def prices(inflation: pd.DataFrame) -> list[str]:
     out: list[str] = []
+    group_name = localised("group_short_name_en", "group_name_ar")
     general = _by_year(inflation[inflation.is_general_index], "avg_inflation_pct")
     if not general.empty:
         peak = general.loc[general.avg_inflation_pct.idxmax()]
         latest_year = int(general.year.iloc[-1])
-        text = f"Inflation peaked at {pct(peak.avg_inflation_pct, False)} in {int(peak.year)}"
+        text = tr(
+            "Inflation peaked at {value} in {year}",
+            value=pct(peak.avg_inflation_pct, False),
+            year=int(peak.year),
+        )
         if latest_year != int(peak.year):
-            text += f" and was {pct(general.avg_inflation_pct.iloc[-1], False)} in {latest_year}"
+            text += tr(
+                " and was {value} in {year}",
+                value=pct(general.avg_inflation_pct.iloc[-1], False),
+                year=latest_year,
+            )
         out.append(text + ".")
         groups = _by_year(
             inflation[(inflation.year == latest_year) & ~inflation.is_general_index],
@@ -96,17 +130,27 @@ def prices(inflation: pd.DataFrame) -> list[str]:
             top = groups.loc[groups.avg_inflation_pct.idxmax()]
             low = groups.loc[groups.avg_inflation_pct.idxmin()]
             out.append(
-                f"In {latest_year} the fastest rise was {top.group_short_name_en} "
-                f"({pct(top.avg_inflation_pct)}) and the biggest fall was "
-                f"{low.group_short_name_en} ({pct(low.avg_inflation_pct)})."
+                tr(
+                    "In {year} the fastest rise was {top} ({top_change}) and the biggest fall "
+                    "was {low} ({low_change}).",
+                    year=latest_year,
+                    top=top[group_name],
+                    top_change=pct(top.avg_inflation_pct),
+                    low=low[group_name],
+                    low_change=pct(low.avg_inflation_pct),
+                )
             )
     levels = _by_year(inflation, "avg_index")
     if not levels.empty:
         newest = levels[levels.year == levels.year.max()]
         top = newest.loc[newest.avg_index.idxmax()]
         out.append(
-            f"{top.group_short_name_en} has the highest index: {top.avg_index:.0f} in "
-            f"{int(top.year)} against 100 in 2018."
+            tr(
+                "{group} has the highest index: {value} in {year} against 100 in 2018.",
+                group=top[group_name],
+                value=f"{top.avg_index:.0f}",
+                year=int(top.year),
+            )
         )
     return out
 
@@ -121,22 +165,36 @@ def travel(monthly: pd.DataFrame, annual: pd.DataFrame) -> list[str]:
             worst = after.loc[after.airport_passengers.idxmin()]
             fall = 100 * (worst.airport_passengers / best.airport_passengers - 1)
             out.append(
-                f"Airport traffic fell from {millions(best.airport_passengers, 1)} passengers "
-                f"in {int(best.year)} to {millions(worst.airport_passengers, 1)} in "
-                f"{int(worst.year)} ({pct(fall)})."
+                tr(
+                    "Airport traffic fell from {high} passengers in {high_year} to {low} in "
+                    "{low_year} ({change}).",
+                    high=millions(best.airport_passengers, 1),
+                    high_year=int(best.year),
+                    low=millions(worst.airport_passengers, 1),
+                    low_year=int(worst.year),
+                    change=pct(fall),
+                )
             )
             if airport.year.iloc[-1] > worst.year:
                 share = 100 * airport.airport_passengers.iloc[-1] / best.airport_passengers
                 out.append(
-                    f"By {airport.year.iloc[-1]} it was back to {share:.0f}% of the "
-                    f"{int(best.year)} level."
+                    tr(
+                        "By {year} it was back to {share}% of the {base_year} level.",
+                        year=airport.year.iloc[-1],
+                        share=f"{share:.0f}",
+                        base_year=int(best.year),
+                    )
                 )
     months = monthly.dropna(subset=["airport_passengers"])
     if not months.empty:
         busiest = months.loc[months.airport_passengers.idxmax()]
         out.append(
-            f"The busiest month in the data is {busiest.month_name_en} {int(busiest.year)} "
-            f"with {millions(busiest.airport_passengers)} passengers."
+            tr(
+                "The busiest month in the data is {month} {year} with {value} passengers.",
+                month=busiest[localised("month_name_en", "month_name_ar")],
+                year=int(busiest.year),
+                value=millions(busiest.airport_passengers),
+            )
         )
     hotels = monthly.dropna(subset=["hotel_guests", "hotel_nights"])
     if not hotels.empty:
@@ -151,15 +209,23 @@ def travel(monthly: pd.DataFrame, annual: pd.DataFrame) -> list[str]:
         plausible = ratio[ratio >= 1]
         if len(plausible) >= 2:
             out.append(
-                f"Hotel guests stayed longer: nights per guest rose from "
-                f"{plausible.iloc[0]:.2f} in {int(plausible.index[0])} to "
-                f"{plausible.iloc[-1]:.2f} in {int(plausible.index[-1])}."
+                tr(
+                    "Hotel guests stayed longer: nights per guest rose from {first} in "
+                    "{first_year} to {last} in {last_year}.",
+                    first=f"{plausible.iloc[0]:.2f}",
+                    first_year=int(plausible.index[0]),
+                    last=f"{plausible.iloc[-1]:.2f}",
+                    last_year=int(plausible.index[-1]),
+                )
             )
         if (ratio < 1).any():
             years = ", ".join(str(int(y)) for y in ratio[ratio < 1].index)
             out.append(
-                f"The source reports fewer nights than guests for {years}, which cannot be "
-                "right; those months are flagged by a data test."
+                tr(
+                    "The source reports fewer nights than guests for {years}, which cannot be "
+                    "right; those months are flagged by a data test.",
+                    years=years,
+                )
             )
     return out
 
@@ -170,20 +236,28 @@ def utilities(national: pd.DataFrame, zones: pd.DataFrame) -> list[str]:
     if len(full) >= 2:
         first, last = full.iloc[0], full.iloc[-1]
         growth = 100 * (last.electricity_kwh / first.electricity_kwh - 1)
-        text = (
-            f"Electricity use {change(growth)} from {int(first.year)} to {int(last.year)} "
-            f"({first.electricity_gwh / 1000:,.1f} to {last.electricity_gwh / 1000:,.1f} TWh)"
+        text = tr(
+            "Electricity use {change} from {first_year} to {last_year} ({first} to {last} TWh)",
+            change=change(growth),
+            first_year=int(first.year),
+            last_year=int(last.year),
+            first=f"{first.electricity_gwh / 1000:,.1f}",
+            last=f"{last.electricity_gwh / 1000:,.1f}",
         )
         if pd.notna(first.avg_population) and pd.notna(last.avg_population):
             pop_growth = 100 * (last.avg_population / first.avg_population - 1)
-            text += f", while the population {change(pop_growth)}"
+            text += tr(", while the population {change}", change=change(pop_growth))
         out.append(text + ".")
     if not full.empty and pd.notna(full.electricity_kwh_per_capita.iloc[-1]):
         last = full.iloc[-1]
         out.append(
-            f"In {int(last.year)} each resident used about "
-            f"{last.electricity_kwh_per_capita:,.0f} kWh of electricity and "
-            f"{last.water_litres_per_capita_per_day:,.0f} litres of water a day."
+            tr(
+                "In {year} each resident used about {kwh} kWh of electricity and {litres} "
+                "litres of water a day.",
+                year=int(last.year),
+                kwh=f"{last.electricity_kwh_per_capita:,.0f}",
+                litres=f"{last.water_litres_per_capita_per_day:,.0f}",
+            )
         )
     if not full.empty and not zones.empty:
         year = int(full.year.iloc[-1])
@@ -191,19 +265,30 @@ def utilities(national: pd.DataFrame, zones: pd.DataFrame) -> list[str]:
         if len(z) > 10:
             share = z.head(10).electricity_share_pct.sum()
             out.append(
-                f"The ten largest of {len(z)} zones used {share:.0f}% of the electricity in {year}."
+                tr(
+                    "The ten largest of {count} zones used {share}% of the electricity in {year}.",
+                    count=len(z),
+                    share=f"{share:.0f}",
+                    year=year,
+                )
             )
         if not z.empty and "zone_label" in z:
             first = z.iloc[0]
             out.append(
-                f"The biggest user was {first.zone_label} with "
-                f"{first.electricity_share_pct:.1f}% of the national total."
+                tr(
+                    "The biggest user was {zone} with {share}% of the national total.",
+                    zone=zone_label(first),
+                    share=f"{first.electricity_share_pct:.1f}",
+                )
             )
     partial = national[~national.is_complete_year]
     if not partial.empty:
         years = ", ".join(str(int(y)) for y in partial.year)
         out.append(
-            f"{years} is a partial year on the portal, so it is left out of growth and "
-            "per-person figures."
+            tr(
+                "{years} is a partial year on the portal, so it is left out of growth and "
+                "per-person figures.",
+                years=years,
+            )
         )
     return out

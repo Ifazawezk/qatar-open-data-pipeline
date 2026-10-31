@@ -7,6 +7,7 @@ Google Chrome already installed on the machine; otherwise run
 `python -m playwright install chromium` once.
 
     python scripts/screenshots.py
+    python scripts/screenshots.py --lang ar --only overview    # saves overview-ar.png
 """
 
 from __future__ import annotations
@@ -75,7 +76,9 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8599)
     parser.add_argument("--width", type=int, default=1440)
     parser.add_argument("--only", nargs="+", choices=sorted(PAGES))
+    parser.add_argument("--lang", choices=["en", "ar"], default="en")
     args = parser.parse_args()
+    query, suffix = ("?lang=ar", "-ar") if args.lang == "ar" else ("", "")
 
     from playwright.sync_api import sync_playwright
 
@@ -104,7 +107,7 @@ def main() -> int:
             page = browser.new_page(viewport={"width": args.width, "height": 900})
             for name in args.only or PAGES:
                 page.set_viewport_size({"width": args.width, "height": 900})
-                page.goto(f"{url}/{PAGES[name]}", wait_until="networkidle")
+                page.goto(f"{url}/{PAGES[name]}{query}", wait_until="networkidle")
                 page.wait_for_selector("h1", timeout=30_000)
                 wait_for_charts(page)
                 # Streamlit scrolls an inner container, so grow the window to
@@ -114,7 +117,7 @@ def main() -> int:
                 )
                 page.set_viewport_size({"width": args.width, "height": int(height) + 40})
                 wait_for_charts(page)
-                path = OUT / f"{name}.png"
+                path = OUT / f"{name}{suffix}.png"
                 page.screenshot(path=str(path))
                 print(f"saved {path.relative_to(ROOT)}")
             browser.close()

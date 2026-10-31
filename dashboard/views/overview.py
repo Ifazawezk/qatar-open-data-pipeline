@@ -2,11 +2,14 @@ import pandas as pd
 import streamlit as st
 
 from dashboard import charts, data, insights, ui
+from dashboard.i18n import tr
 
-st.title("Qatar in numbers")
+st.title(tr("Qatar in numbers"))
 st.caption(
-    "Population, prices, travel and utilities from the Qatar Open Data Portal, "
-    "cleaned and tested by this project's pipeline."
+    tr(
+        "Population, prices, travel and utilities from the Qatar Open Data Portal, "
+        "cleaned and tested by this project's pipeline."
+    )
 )
 
 annual = data.annual()
@@ -22,7 +25,9 @@ def kpi(slot, column: str, label: str, value, delta) -> None:
     slot.metric(
         f"{label} ({int(row.year)})",
         value(row),
-        f"{delta(row, prev)} on {int(prev.year)}" if prev is not None else None,
+        tr("{change} on {year}", change=delta(row, prev), year=int(prev.year))
+        if prev is not None
+        else None,
         delta_color="off",
         border=True,
     )
@@ -32,43 +37,48 @@ cols = st.columns(5)
 kpi(
     cols[0],
     "avg_population",
-    "Population",
-    lambda r: f"{r.avg_population / 1e6:.2f}M",
+    tr("Population"),
+    lambda r: tr("{value}M", value=f"{r.avg_population / 1e6:.2f}"),
     lambda r, p: f"{100 * (r.avg_population / p.avg_population - 1):+.1f}%",
 )
 kpi(
     cols[1],
     "cpi_inflation_pct",
-    "Inflation",
+    tr("Inflation"),
     lambda r: f"{r.cpi_inflation_pct:.1f}%",
-    lambda r, p: f"{r.cpi_inflation_pct - p.cpi_inflation_pct:+.1f} pts",
+    lambda r, p: tr("{value} pts", value=f"{r.cpi_inflation_pct - p.cpi_inflation_pct:+.1f}"),
 )
 kpi(
     cols[2],
     "female_participation_rate_pct",
-    "Female LFPR",
+    tr("Female LFPR"),
     lambda r: f"{r.female_participation_rate_pct:.1f}%",
-    lambda r, p: f"{r.female_participation_rate_pct - p.female_participation_rate_pct:+.1f} pts",
+    lambda r, p: tr(
+        "{value} pts",
+        value=f"{r.female_participation_rate_pct - p.female_participation_rate_pct:+.1f}",
+    ),
 )
 kpi(
     cols[3],
     "electricity_kwh_per_capita",
-    "kWh per person",
+    tr("kWh per person"),
     lambda r: f"{r.electricity_kwh_per_capita:,.0f}",
     lambda r, p: f"{100 * (r.electricity_kwh_per_capita / p.electricity_kwh_per_capita - 1):+.1f}%",
 )
 kpi(
     cols[4],
     "airport_passengers",
-    "Air passengers",
-    lambda r: f"{r.airport_passengers / 1e6:.1f}M",
+    tr("Air passengers"),
+    lambda r: tr("{value}M", value=f"{r.airport_passengers / 1e6:.1f}"),
     lambda r, p: f"{100 * (r.airport_passengers / p.airport_passengers - 1):+.0f}%",
 )
 
 st.caption(
-    "Female LFPR: labour force participation rate, the share of women aged 15+ who work or "
-    "look for work. kWh per person: electricity use divided by the average population. "
-    "Air passengers: arrivals plus departures at Hamad International Airport."
+    tr(
+        "Female LFPR: labour force participation rate, the share of women aged 15+ who work or "
+        "look for work. kWh per person: electricity use divided by the average population. "
+        "Air passengers: arrivals plus departures at Hamad International Airport."
+    )
 )
 
 ui.findings(
@@ -85,19 +95,20 @@ ui.findings(
 growth = annual.dropna(subset=["avg_population", "electricity_gwh", "water_million_m3"])
 if len(growth) >= 2:
     base = growth.iloc[0]
+    electricity, water, people = tr("Electricity use"), tr("Water use"), tr("Population")
     indexed = pd.DataFrame(
         {
             "year": growth.year.astype(int),
-            "Electricity use": 100 * growth.electricity_gwh / base.electricity_gwh,
-            "Water use": 100 * growth.water_million_m3 / base.water_million_m3,
-            "Population": 100 * growth.avg_population / base.avg_population,
+            electricity: 100 * growth.electricity_gwh / base.electricity_gwh,
+            water: 100 * growth.water_million_m3 / base.water_million_m3,
+            people: 100 * growth.avg_population / base.avg_population,
         }
     )
     fig = charts.lines(
         indexed,
         "year",
-        {c: c for c in ["Electricity use", "Water use", "Population"]},
-        f"Utility use and population, indexed to {int(base.year)} = 100",
+        {c: c for c in [electricity, water, people]},
+        tr("Utility use and population, indexed to {year} = 100", year=int(base.year)),
         value_format=".1f",
         from_zero=False,
     )
@@ -105,37 +116,36 @@ if len(growth) >= 2:
     ui.chart(
         fig,
         indexed,
-        "When the electricity line is above the population line, use per person is rising.",
+        tr("When the electricity line is above the population line, use per person is rising."),
     )
 
-st.subheader("Year by year")
+st.subheader(tr("Year by year"))
 ROWS = [
-    ("Population, average (millions)", "avg_population", "{:,.3f}"),
-    ("Population growth", "population_growth_pct", "{:+.1f}%"),
-    ("Labour force participation", "participation_rate_pct", "{:.1f}%"),
-    ("Female participation", "female_participation_rate_pct", "{:.1f}%"),
-    ("Unemployment rate", "unemployment_rate_pct", "{:.2f}%"),
-    ("CPI, average (2018 = 100)", "cpi_avg_index", "{:.1f}"),
-    ("Inflation", "cpi_inflation_pct", "{:+.1f}%"),
-    ("Airport passengers (millions)", "airport_passengers", "{:,.2f}"),
-    ("Hotel guests (millions)", "hotel_guests", "{:,.2f}"),
-    ("Hotel nights (millions)", "hotel_nights", "{:,.2f}"),
-    ("Electricity (GWh)", "electricity_gwh", "{:,.0f}"),
-    ("Electricity per person (kWh)", "electricity_kwh_per_capita", "{:,.0f}"),
-    ("Water (million m3)", "water_million_m3", "{:,.1f}"),
-    ("Water per person per day (litres)", "water_litres_per_capita_per_day", "{:,.0f}"),
+    (tr("Population, average (millions)"), "avg_population", "{:,.3f}", 1e6),
+    (tr("Population growth"), "population_growth_pct", "{:+.1f}%", 1),
+    (tr("Labour force participation"), "participation_rate_pct", "{:.1f}%", 1),
+    (tr("Female participation"), "female_participation_rate_pct", "{:.1f}%", 1),
+    (tr("Unemployment rate"), "unemployment_rate_pct", "{:.2f}%", 1),
+    (tr("CPI, average (2018 = 100)"), "cpi_avg_index", "{:.1f}", 1),
+    (tr("Inflation"), "cpi_inflation_pct", "{:+.1f}%", 1),
+    (tr("Airport passengers (millions)"), "airport_passengers", "{:,.2f}", 1e6),
+    (tr("Hotel guests (millions)"), "hotel_guests", "{:,.2f}", 1e6),
+    (tr("Hotel nights (millions)"), "hotel_nights", "{:,.2f}", 1e6),
+    (tr("Electricity (GWh)"), "electricity_gwh", "{:,.0f}", 1),
+    (tr("Electricity per person (kWh)"), "electricity_kwh_per_capita", "{:,.0f}", 1),
+    (tr("Water (million m3)"), "water_million_m3", "{:,.1f}", 1),
+    (tr("Water per person per day (litres)"), "water_litres_per_capita_per_day", "{:,.0f}", 1),
 ]
 
 
-def cells(label: str, column: str, fmt: str) -> list[str]:
-    scale = 1e6 if "(millions)" in label else 1
+def cells(column: str, fmt: str, scale: float) -> list[str]:
     return [fmt.format(v / scale) if pd.notna(v) else "" for v in annual[column].tolist()]
 
 
 years = annual.year.astype(int).tolist()
 table = pd.DataFrame(
-    [[label, *cells(label, column, fmt)] for label, column, fmt in ROWS],
-    columns=["Indicator", *[str(y) for y in years]],
+    [[label, *cells(column, fmt, scale)] for label, column, fmt, scale in ROWS],
+    columns=[tr("Indicator"), *[str(y) for y in years]],
 )
-st.dataframe(table, hide_index=True, height=36 * (len(table) + 1) + 2)
-st.caption("An empty cell means the source does not cover that whole year.")
+st.dataframe(ui.tidy(table), hide_index=True, height=36 * (len(table) + 1) + 2)
+st.caption(tr("An empty cell means the source does not cover that whole year."))

@@ -13,6 +13,7 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
+from dashboard.i18n import tr
 from pipeline.config import Settings
 
 
@@ -37,7 +38,12 @@ def require_warehouse() -> None:
     """Stop the page with a helpful message when the pipeline has not run yet."""
     path = warehouse_path()
     if not path.exists():
-        st.error(f"No warehouse found at `{path}`. Build it first with `python -m pipeline run`.")
+        st.error(
+            tr(
+                "No warehouse found at `{path}`. Build it first with `python -m pipeline run`.",
+                path=path,
+            )
+        )
         st.stop()
 
 
