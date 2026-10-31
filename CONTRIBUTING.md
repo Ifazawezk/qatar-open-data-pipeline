@@ -115,6 +115,11 @@ for numbers and a row count.
 Use `severity: warn` for known problems in the source that should stay
 visible without stopping the pipeline, and leave a comment explaining why.
 
+For a monthly series, add `anomaly` to the tests of its value column to get a
+warning about sudden month-on-month jumps. Add `by: <column>` if one table holds
+several series. The limits are in [`config/quality.yml`](config/quality.yml);
+add an entry there if the defaults do not suit the series.
+
 ### 6. Model it for analysis
 
 Add intermediate models for reshaping or calculations and a mart (or extend

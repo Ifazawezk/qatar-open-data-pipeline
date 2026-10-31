@@ -1,0 +1,35 @@
+# Limits for the data quality checks declared in models/schema.yml.
+#
+# anomaly: warn when a monthly series moves suddenly. A month is flagged only
+# when both of these are true:
+#
+#   max_change_pct      it moved by more than this percentage on the previous
+#                       month, up or down
+#   typical_multiple    it moved by more than this many times the usual move of
+#                       that series (the median of its month-on-month changes,
+#                       ignoring the sign)
+#
+# The second rule stops a naturally jumpy series from being flagged all the
+# time. A series with fewer than min_history_months changes has no reliable
+# usual move, so only max_change_pct applies to it.
+#
+# A flag means "look at this month", not "this number is wrong". The check does
+# not know about seasons, holidays or events, and compares each month only with
+# the month before it.
+#
+# These limits were chosen after looking at the data in October 2026, to pick
+# out the largest moves in each series. They are not based on any outside
+# standard, so change them if they flag too much or too little.
+
+anomaly:
+  defaults:
+    max_change_pct: 40
+    typical_multiple: 3
+    min_history_months: 12
+
+  # Keys are model.column. Anything not set here comes from defaults.
+  # Prices move far less than passenger counts: the median monthly move is
+  # about 0.4% for the general index and 11% for airport passengers.
+  fct_cpi_monthly.cpi_index:
+    max_change_pct: 5
+    typical_multiple: 4

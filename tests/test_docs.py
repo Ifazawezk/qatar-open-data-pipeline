@@ -26,6 +26,7 @@ def test_catalog_lists_sources_models_columns_and_tests(fixture_settings, wareho
     assert "### marts.fct_utilities_national_annual" in text
     assert "| `electricity_kwh_per_capita` | DOUBLE | Electricity kWh per resident" in text
     assert "`expression: no_per_capita_for_partial_years`" in text
+    assert "| `cpi_index` | DOUBLE | Index value, base year 2018 = 100. | anomaly |" in text
     # one section per model
     assert text.count("\n### staging.") == 7
     assert text.count("\n### marts.") == 9

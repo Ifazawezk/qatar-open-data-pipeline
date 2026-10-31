@@ -69,7 +69,8 @@ else:
         st.success("Every data test passed.")
     else:
         st.markdown(
-            "Warnings are known issues in the source data. They are reported on every run "
+            "Warnings are known issues in the source data, or sudden month-on-month jumps "
+            "that are worth a look and may be real events. They are reported on every run "
             "but do not stop the pipeline; a failed test does."
         )
         st.dataframe(

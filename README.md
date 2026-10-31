@@ -9,8 +9,8 @@
   <img src="https://img.shields.io/badge/python-3.11%2B-2a78d6" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/DuckDB-2.0-2a78d6" alt="DuckDB 2.0">
   <img src="https://img.shields.io/badge/datasets-7%20from%20data.gov.qa-2a78d6" alt="7 datasets from data.gov.qa">
-  <img src="https://img.shields.io/badge/data%20tests-113%20passed%2C%204%20warnings-1baf7a" alt="Data tests: 113 passed, 4 warnings">
-  <img src="https://img.shields.io/badge/unit%20tests-129%20passed-1baf7a" alt="Unit tests: 129 passed">
+  <img src="https://img.shields.io/badge/data%20tests-113%20passed%2C%208%20warnings-1baf7a" alt="Data tests: 113 passed, 8 warnings">
+  <img src="https://img.shields.io/badge/unit%20tests-156%20passed-1baf7a" alt="Unit tests: 156 passed">
   <img src="https://img.shields.io/badge/PRs-welcome-2a78d6" alt="PRs welcome">
 </p>
 
@@ -70,8 +70,8 @@ Measured on a Windows 11 laptop on 30 October 2026.
 | Run with a fresh cache | 0.6 s, no requests |
 | Warehouse size after a fresh build | 6.0 MB |
 | SQL models | 22 (7 staging, 6 intermediate, 9 marts) plus 2 seed tables |
-| Data tests per run | 117: 113 pass, 4 warnings (known source issues), 0 failures |
-| Unit tests | 129, about 10 s, no network access |
+| Data tests per run | 121: 113 pass, 8 warnings (4 known source issues, 4 [sudden-jump checks](#sudden-month-on-month-jumps)), 0 failures |
+| Unit tests | 156, about 11 s, no network access |
 | Code | 720 lines of SQL, about 3,000 lines of Python, 1,370 lines of tests |
 
 ## Screenshots
@@ -95,7 +95,7 @@ flowchart LR
     stg["staging<br/>7 views: types, codes, labels"]
     int["intermediate<br/>6 views: pivots, changes"]
     marts["marts<br/>9 tables: facts and dimensions"]
-    tests{"117 data tests"}
+    tests{"121 data tests"}
     dash["Streamlit dashboard<br/>6 pages"]
     keep["previous warehouse kept"]
     docs["docs/data_catalog.md<br/>columns and lineage"]
@@ -140,10 +140,11 @@ earlier one.
 | marts | Tables for analysis: facts per month, quarter or year, two dimensions (`dim_month`, `dim_zone`) and a one-row-per-year summary that combines every dataset. | `fct_utilities_national_annual`, `mart_annual_indicators` |
 
 **4. Test** ([`pipeline/quality.py`](pipeline/quality.py), [`models/schema.yml`](models/schema.yml)).
-117 data tests: not null, unique keys, accepted values, ranges, row counts,
+121 data tests: not null, unique keys, accepted values, ranges, row counts,
 relationships, row-level rules (for example population 15+ must equal active
-plus inactive), custom SQL checks and freshness. Tests marked `warn` report
-known problems in the source without stopping the run.
+plus inactive), custom SQL checks, freshness and sudden month-on-month jumps.
+Tests marked `warn` report known problems in the source, or jumps worth a look,
+without stopping the run.
 
 The whole build follows a **write, audit, publish** pattern: loading, all 22
 models and all tests run inside one DuckDB transaction, and the transaction is
@@ -248,10 +249,50 @@ The pipeline keeps these visible instead of hiding them:
   [data catalog](docs/data_catalog.md) lists the portal's own English and Arabic
   label for every raw column.
 
+### Sudden month-on-month jumps
+
+Anomaly checks compare each month with the calendar month before it. A month is
+flagged when the move is larger than a set limit and also several times the
+usual move for that series, because a 5% move is ordinary for airport passengers
+and rare for the general price index. The limits are in
+[`config/quality.yml`](config/quality.yml).
+
+The checks cover total airport passengers, hotel guests, hotel nights and the 13
+CPI series. On the data downloaded on 31 October 2026 they flagged 17 of 1,112
+monthly changes:
+
+| Series | Flagged months | What the data shows |
+| --- | --- | --- |
+| Airport passengers | 2020-03 -42.6%, 2020-04 -87.9%, 2020-06 +119.9%, 2020-07 +73.2%, 2021-07 +43.0% | The 2020 falls and rises are during the pandemic. The rises start from a very low base: June 2020 is 279,338 passengers against 127,044 in May. |
+| Hotel guests | 2022-05 +54.4%, 2022-12 +55.5% | May follows a 37.1% fall in April and is close to the March level. December is a World Cup month. |
+| Hotel nights | 2022-12 +48.1% | The same month as the jump in guests. |
+| CPI: Communication | 2023-04 +16.4%, 2024-01 -11.9%, 2024-06 +9.3%, 2024-08 +9.2% | This index usually moves about 0.2% a month, and the level stays after each jump, so these look like steps rather than spikes. |
+| CPI: Recreation | 2023-01 -17.2%, 2025-01 -14.9% | This group has fallen every January since 2022 and risen every December, so these look seasonal. |
+| CPI: Restaurants and hotels | 2022-11 +7.6%, 2023-01 -6.2% | The rise is around the World Cup, and the index was back below its October 2022 level by March 2023. |
+| CPI: Tobacco | 2020-02 +8.4% | The only change in this index from January 2020 to December 2025 (227 to 246). |
+
+A flag means "look at this month". It does not show that a number is wrong, and
+none of these has been confirmed as an error or explained by the publishers. The
+right-hand column describes the data and the calendar; it does not give causes.
+
+The check has clear limits:
+
+- It cannot tell a real event from a mistake in the source.
+- It does not adjust for seasons or holidays such as Ramadan and Eid, which
+  move through the calendar.
+- The limits were chosen after looking at this same data, so the number of flags
+  says little on its own.
+- It only finds sudden moves. The hotel nights problem listed above is not
+  flagged, because neither column jumps; a separate test catches it.
+- It covers monthly series only, not the quarterly labour figures.
+
+The general CPI index had no flags; its largest monthly move was 2.6%.
+
 ## Project structure
 
 ```
 config/sources.yml      datasets to download and their column contracts
+config/quality.yml      limits for the anomaly checks
 pipeline/               extract, load, model runner, data tests, docs, export, CLI
 models/staging/         one SQL file per model ...
 models/intermediate/
@@ -275,12 +316,12 @@ Dockerfile, docker-compose.yml
 - [x] Generated data catalog with lineage
 - [x] Dashboard with written findings and table views
 - [x] Docker setup
+- [x] Anomaly checks on monthly series (sudden jumps reported as warnings)
 - [x] Export the marts to Parquet and CSV for use in Power BI or Excel
 - [ ] Scheduled refresh (Windows Task Scheduler or a CI job) with a change log of what the portal updated
 - [ ] More datasets: GDP by activity, vehicle registrations, births and deaths
 - [ ] Arabic interface for the dashboard (right-to-left layout)
 - [ ] Zone-level population from the 2020 census for per-resident figures by zone
-- [ ] Anomaly checks on monthly series (sudden jumps reported as warnings)
 
 ## FAQ
 
