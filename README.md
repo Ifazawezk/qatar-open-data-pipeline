@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/DuckDB-2.0-2a78d6" alt="DuckDB 2.0">
   <img src="https://img.shields.io/badge/datasets-7%20from%20data.gov.qa-2a78d6" alt="7 datasets from data.gov.qa">
   <img src="https://img.shields.io/badge/data%20tests-113%20passed%2C%204%20warnings-1baf7a" alt="Data tests: 113 passed, 4 warnings">
-  <img src="https://img.shields.io/badge/unit%20tests-96%20passed-1baf7a" alt="Unit tests: 96 passed">
+  <img src="https://img.shields.io/badge/unit%20tests-129%20passed-1baf7a" alt="Unit tests: 129 passed">
   <img src="https://img.shields.io/badge/PRs-welcome-2a78d6" alt="PRs welcome">
 </p>
 
@@ -71,7 +71,7 @@ Measured on a Windows 11 laptop on 30 October 2026.
 | Warehouse size after a fresh build | 6.0 MB |
 | SQL models | 22 (7 staging, 6 intermediate, 9 marts) plus 2 seed tables |
 | Data tests per run | 117: 113 pass, 4 warnings (known source issues), 0 failures |
-| Unit tests | 96, about 7 s, no network access |
+| Unit tests | 129, about 10 s, no network access |
 | Code | 720 lines of SQL, about 3,000 lines of Python, 1,370 lines of tests |
 
 ## Screenshots
@@ -99,6 +99,7 @@ flowchart LR
     dash["Streamlit dashboard<br/>6 pages"]
     keep["previous warehouse kept"]
     docs["docs/data_catalog.md<br/>columns and lineage"]
+    exports["exports/<br/>Parquet and CSV files"]
 
     portal -- "metadata + CSV export<br/>retries, cache, 1 s pause" --> raw
     raw -- "load, check hash and rows" --> rawdb
@@ -108,6 +109,7 @@ flowchart LR
     tests -- "pass: commit" --> dash
     tests -- "fail: roll back" --> keep
     marts --> docs
+    marts --> exports
 ```
 
 **1. Extract** ([`pipeline/extract.py`](pipeline/extract.py)). For each dataset in
@@ -155,6 +157,14 @@ page are computed from the data when the page loads.
 [`docs/data_catalog.md`](docs/data_catalog.md) is generated from the warehouse
 and lists every model, column, type and test, with a lineage graph.
 
+**6. Export** ([`pipeline/export.py`](pipeline/export.py)). `python -m pipeline export`
+writes each mart to `exports/` as Parquet and as CSV. Parquet keeps the column
+types; the CSV files are UTF-8 with a byte order mark, which is what Excel needs
+to show Arabic. [`docs/power-bi.md`](docs/power-bi.md) explains how to load them
+into Power BI, with suggested relationships and measures. The files were checked
+by reading them back with DuckDB and Python. They have not been opened in Power
+BI or Excel, and the guide has not been tested in Power BI.
+
 ## Quick start
 
 You need Python 3.11 or newer. Everything works the same in PowerShell, cmd or
@@ -180,6 +190,7 @@ The pipeline commands:
 | `python -m pipeline transform` | Load raw files and build the models (no tests). `--select fct_cpi_monthly` builds one model and its parents. |
 | `python -m pipeline test` | Run the data tests against the current warehouse. Exits with code 1 on failure. |
 | `python -m pipeline docs` | Regenerate `docs/data_catalog.md`. |
+| `python -m pipeline export` | Write every mart to `exports/` as Parquet and CSV. `--out DIR` writes somewhere else. |
 | `python -m pipeline sources` | List the configured datasets. |
 
 Development tasks: `python tasks.py test` (pytest), `python tasks.py lint`
@@ -241,7 +252,7 @@ The pipeline keeps these visible instead of hiding them:
 
 ```
 config/sources.yml      datasets to download and their column contracts
-pipeline/               extract, load, model runner, data tests, docs, CLI
+pipeline/               extract, load, model runner, data tests, docs, export, CLI
 models/staging/         one SQL file per model ...
 models/intermediate/
 models/marts/
@@ -250,7 +261,8 @@ seeds/                  small lookup tables (months, CPI groups)
 dashboard/              Streamlit app: app.py, views/, charts, findings
 tests/                  pytest suite and trimmed real-data fixtures
 scripts/                fixtures, screenshots and banner helpers
-docs/                   generated data catalog and images
+docs/                   generated data catalog, Power BI guide and images
+exports/                generated Parquet and CSV files (not in git)
 tasks.py                cross-platform task runner
 Dockerfile, docker-compose.yml
 ```
@@ -263,11 +275,11 @@ Dockerfile, docker-compose.yml
 - [x] Generated data catalog with lineage
 - [x] Dashboard with written findings and table views
 - [x] Docker setup
+- [x] Export the marts to Parquet and CSV for use in Power BI or Excel
 - [ ] Scheduled refresh (Windows Task Scheduler or a CI job) with a change log of what the portal updated
 - [ ] More datasets: GDP by activity, vehicle registrations, births and deaths
 - [ ] Arabic interface for the dashboard (right-to-left layout)
 - [ ] Zone-level population from the 2020 census for per-resident figures by zone
-- [ ] Export the marts to Parquet for use in Power BI or Excel
 - [ ] Anomaly checks on monthly series (sudden jumps reported as warnings)
 
 ## FAQ

@@ -13,13 +13,11 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path
 
-import duckdb
-
 from pipeline.config import Catalogue, Settings
 from pipeline.extract import Manifest
 from pipeline.quality import load_schema
 from pipeline.transform import LAYERS, Model, discover, execution_order
-from pipeline.warehouse import connect
+from pipeline.warehouse import connect, table_columns
 
 
 class DocsError(RuntimeError):
@@ -61,14 +59,6 @@ def lineage_mermaid(models: dict[str, Model]) -> str:
         for relation in upstream:
             lines.append(f"  {_node_id(relation)} --> {target}")
     return "\n".join(lines)
-
-
-def _columns(con: duckdb.DuckDBPyConnection, schema: str, name: str) -> list[tuple[str, str]]:
-    return con.execute(
-        "select column_name, data_type from information_schema.columns "
-        "where table_schema = ? and table_name = ? order by ordinal_position",
-        [schema, name],
-    ).fetchall()
 
 
 def _test_labels(entry: dict) -> tuple[list[str], dict[str, list[str]]]:
@@ -176,7 +166,7 @@ def render_catalog(settings: Settings, catalogue: Catalogue, today: date | None 
                 if model_tests:
                     out += ["Table tests: " + ", ".join(f"`{t}`" for t in model_tests), ""]
                 out += ["| Column | Type | Description | Tests |", "| --- | --- | --- | --- |"]
-                for column, dtype in _columns(con, model.layer, model.name):
+                for column, dtype in table_columns(con, model.layer, model.name):
                     tests = ", ".join(column_tests.get(column, []))
                     out.append(
                         f"| `{column}` | {dtype} | {_escape(descriptions.get(column, ''))} "

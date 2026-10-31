@@ -30,6 +30,7 @@ TASKS: dict[str, tuple[str, list[list[str]]]] = {
     "datatest": ("run the data tests on the warehouse", [[PY, "-m", "pipeline", "test"]]),
     "run": ("extract, build and test everything", [[PY, "-m", "pipeline", "run"]]),
     "docs": ("regenerate docs/data_catalog.md", [[PY, "-m", "pipeline", "docs"]]),
+    "export": ("write the marts to Parquet and CSV", [[PY, "-m", "pipeline", "export"]]),
     "dashboard": (
         "start the Streamlit dashboard",
         [[PY, "-m", "streamlit", "run", "dashboard/app.py"]],
