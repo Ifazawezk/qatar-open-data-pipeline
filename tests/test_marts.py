@@ -6,7 +6,10 @@ from datetime import date
 
 import pytest
 
-from conftest import FIXTURES
+from conftest import FIXTURES, stage_fixture_files
+from pipeline.build import build_warehouse
+from pipeline.config import PROJECT_ROOT, Settings, load_catalogue
+from pipeline.warehouse import connect
 
 
 def fixture_rows(key):
@@ -132,6 +135,33 @@ def test_partial_utility_year_is_flagged_and_not_compared(warehouse):
     assert rows[0][3] is None  # no 2023 to compare with
     assert rows[1][3] is not None
     assert rows[2][2] is None and rows[2][3] is None
+
+
+def utility_years(tmp_path, fetched_at, source_modified):
+    settings = Settings(
+        root=PROJECT_ROOT,
+        data_dir=tmp_path / "data",
+        warehouse_path=tmp_path / "data" / "warehouse.duckdb",
+    )
+    stage_fixture_files(settings, fetched_at, source_modified)
+    build_warehouse(settings, load_catalogue(settings.sources_file))
+    with connect(settings.warehouse_path, read_only=True) as con:
+        return con.execute(
+            "select year, is_complete_year, electricity_yoy_pct is not null "
+            "from marts.fct_utilities_national_annual order by year"
+        ).fetchall()
+
+
+def test_partial_year_stays_partial_when_downloaded_after_it_ended(tmp_path):
+    # downloaded in January 2027, but the portal last published in September 2026,
+    # so the 2026 figures still only cover January to August
+    rows = utility_years(tmp_path, "2027-01-15T08:00:00+00:00", "2026-09-29T13:14:31+00:00")
+    assert rows == [(2024, True, False), (2025, True, True), (2026, False, False)]
+
+
+def test_year_is_complete_once_the_portal_publishes_after_it_ended(tmp_path):
+    rows = utility_years(tmp_path, "2027-02-20T08:00:00+00:00", "2027-02-10T09:00:00+00:00")
+    assert rows[-1] == (2026, True, True)
 
 
 def test_per_capita_uses_average_quarterly_population(warehouse):
