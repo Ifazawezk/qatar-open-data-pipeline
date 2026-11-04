@@ -174,7 +174,7 @@ The pipeline keeps these visible:
 
 - From January 2019 to January 2020 the published hotel nights are lower than the guests (0.82 nights per guest in 2019), which cannot be right. A `warn` test flags the 13 months and the dashboard says so.
 - Airport passengers stop in December 2022 and hotel figures in December 2023, because the portal has not published anything later. CPI ends in December 2025 and the labour survey in 2025 Q4. Freshness tests warn about each one, and the gaps are not filled with estimates.
-- KAHRAMAA publishes the running year as a partial total (January to August for 2026). The pipeline marks a year complete only if the file was downloaded after the year ended, and leaves partial years out of growth rates and per-resident figures.
+- KAHRAMAA publishes the running year as a partial total (January to August for 2026). The pipeline marks a year complete only if the portal published the file after the year ended, so a download in January still treats the year before as partial until KAHRAMAA updates it. Partial years are left out of growth rates and per-resident figures.
 - English CPI group names contain typos ("Resturant", "gooda"), the general index is coded "0" while the groups use "001" to "012", and several columns are transliterated from Arabic. The staging layer fixes these, and the [data catalog](docs/data_catalog.md) lists the portal's own English and Arabic label for every raw column.
 
 ### Sudden month-on-month jumps
