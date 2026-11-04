@@ -1,90 +1,82 @@
+# Qatar open data pipeline
+
 <p align="center">
   <img src="docs/images/banner.png" alt="Qatar Open Data Pipeline: monthly passengers at Hamad International Airport, 2017 to 2022" width="100%">
 </p>
-
-**An end-to-end data pipeline that downloads official statistics from Qatar's open data portal, cleans and tests them in a layered DuckDB warehouse, and presents them in a Streamlit dashboard.**
 
 <p>
   <img src="https://img.shields.io/badge/license-MIT-2a78d6" alt="License: MIT">
   <img src="https://img.shields.io/badge/python-3.11%2B-2a78d6" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/DuckDB-2.0-2a78d6" alt="DuckDB 2.0">
-  <img src="https://img.shields.io/badge/datasets-7%20from%20data.gov.qa-2a78d6" alt="7 datasets from data.gov.qa">
-  <img src="https://img.shields.io/badge/data%20tests-113%20passed%2C%208%20warnings-1baf7a" alt="Data tests: 113 passed, 8 warnings">
-  <img src="https://img.shields.io/badge/unit%20tests-356%20passed-1baf7a" alt="Unit tests: 356 passed">
-  <img src="https://img.shields.io/badge/PRs-welcome-2a78d6" alt="PRs welcome">
 </p>
 
-| You want... | Go to |
+Downloads official statistics from Qatar's open data portal, cleans and tests them in a layered DuckDB warehouse, and shows them in a Streamlit dashboard in English or Arabic.
+
+[data.gov.qa](https://www.data.gov.qa) has around 2,000 datasets from the National Planning Council, KAHRAMAA, ministries and others, but each one is its own small table with its own layout. Months are "Jan" in one file and "January" in another, a year and a measure share one column ("2021&nbsp;&nbsp;Guests"), column names are transliterated from Arabic (`lmw_shr`, `ljns`), some series stopped updating years ago, and the running year sits next to complete years without a flag. Answering "is electricity use growing faster than the population?" means fixing all of that by hand across several files. Here it is done once, in tested code, and the answer is rebuilt with one command whenever the portal updates.
+
+## Quick start
+
+You need Python 3.11 or newer. Everything works the same in PowerShell, cmd or bash, and `tasks.py` replaces a Makefile.
+
+```bash
+git clone <this repository>
+cd qatar-open-data-pipeline
+python -m venv .venv
+.venv\Scripts\activate            # macOS / Linux: source .venv/bin/activate
+python tasks.py setup             # pip install -r requirements-dev.txt
+
+python -m pipeline run            # download, build and test (about a minute)
+python tasks.py dashboard         # open http://localhost:8501
+                                  # or http://localhost:8501/?lang=ar for Arabic
+```
+
+| Command | What it does |
 | --- | --- |
-| the findings | [Findings](#findings) |
-| to run it | [Quick start](#quick-start) |
-| to learn how a data pipeline is put together | [How it works](#how-it-works) |
+| `python -m pipeline run` | Extract, build and test. The normal command. `--skip-extract` works offline from `data/raw`, `--force` downloads everything again. |
+| `python -m pipeline extract` | Download raw files only. `--only cpi_monthly` for one dataset. |
+| `python -m pipeline transform` | Load raw files and build the models (no tests). `--select fct_cpi_monthly` builds one model and its parents. |
+| `python -m pipeline test` | Run the data tests against the current warehouse. Exits with code 1 on failure. |
+| `python -m pipeline docs` | Regenerate `docs/data_catalog.md`. |
+| `python -m pipeline export` | Write every mart to `exports/` as Parquet and CSV. `--out DIR` writes somewhere else. |
+| `python -m pipeline sources` | List the configured datasets. |
 
-## Why
+Once the files are in `data/raw`, `python -m pipeline run --skip-extract` needs no internet. The unit tests never use the network; they run against trimmed copies of the real files in `tests/fixtures/raw`. For development there are `python tasks.py test` (pytest), `python tasks.py lint` (ruff) and `python tasks.py help` for the full list.
 
-Qatar publishes a lot of useful open data: around 2,000 datasets on
-[data.gov.qa](https://www.data.gov.qa) from the National Planning Council,
-KAHRAMAA, ministries and others. But each dataset is its own small table with
-its own layout. Months are written as "Jan" in one file and "January" in
-another, a year and a measure share one column ("2021&nbsp;&nbsp;Guests"), column
-names are transliterated from Arabic (`lmw_shr`, `ljns`), some series stopped
-updating years ago, and the running year sits next to complete years without a
-flag. Answering a simple question such as "is electricity use growing faster
-than the population?" means downloading several files and fixing all of that
-by hand.
+With Docker:
 
-This project does that work once, in code, with tests, so the answer can be
-rebuilt with one command whenever the portal updates.
+```bash
+docker compose up --build         # runs the pipeline, then serves the dashboard on :8501
+docker compose run --rm pipeline  # refresh the data later
+```
+
+The `pipeline` service writes to a named volume and exits. The `dashboard` service only starts if the pipeline finished successfully, and mounts the volume read-only.
 
 ## Findings
 
-All numbers below come from the warehouse built on 30 October 2026. The
-dashboard computes the same sentences live from the data, so they update when
-the portal does.
+From the warehouse built on 30 October 2026. The dashboard computes the same sentences from the data when it loads, so they update when the portal does.
 
 | Topic | Finding |
 | --- | --- |
-| Population | The average population was **3.27 million in 2025, up 5.5%** on 2024. The only fall since 2018 was in 2021 (**-4.6%**, during the pandemic); it grew again by 7.9% in 2022. |
-| Who lives here | Men are **72%** of the population (2025 Q4). |
-| Women at work | Female labour force participation rose from **57.9% in 2018 to 65.0% in 2025** (+7.1 points). Overall participation stays near 88% and unemployment between **0.11% and 0.14%** in every year. |
-| Prices | Annual inflation peaked at **5.0% in 2022** (the monthly high was 6.5% year on year in December 2021) and slowed to **0.5% in 2025**. Recreation and culture prices rose **29.6% in 2022**, the World Cup year. In 2025 the biggest rise was miscellaneous goods and services (+12.3%) and housing and utilities fell 2.3%. The tobacco index stands at 246 (2018 = 100). |
-| Air travel | Passengers at Hamad International Airport fell **67.6%**, from 38.8 million in 2019 to 12.6 million in 2020. By 2022 traffic was back to 35.7 million, **92% of the 2019 level**. December 2022, the World Cup month, had 3.62 million passengers (+56% on December 2021). |
-| Hotels | Guests are staying longer: nights per guest rose from **1.06 in 2020 to 1.82 in 2023**, and 2023 had 9.92 million hotel nights, the most in the data. |
-| Electricity | Consumption grew **33.6%** from 41.8 TWh (2021) to 55.8 TWh (2025) while the population grew **23.8%**, so use per resident rose from 15,828 to **17,088 kWh** (+8.0%). |
-| Water | Water use grew 22.1% (426 to 521 million m3), close to population growth: about **436 litres per resident per day** in 2025. |
-| Where the power goes | The 10 largest of 91 zones used **51%** of the electricity in 2025. The largest is zone 75 (Al Thakhira, Ras Laffan, Umm Birka) with **9.4%**, then zone 93 (Mesaieed Industrial Area) with 6.8%. |
+| Population | The average population was 3.27 million in 2025, up 5.5% on 2024. The only fall since 2018 was in 2021 (-4.6%, during the pandemic); it grew again by 7.9% in 2022. |
+| Who lives here | Men are 72% of the population (2025 Q4). |
+| Women at work | Female labour force participation rose from 57.9% in 2018 to 65.0% in 2025 (+7.1 points). Overall participation stays near 88% and unemployment between 0.11% and 0.14% in every year. |
+| Prices | Annual inflation peaked at 5.0% in 2022 (the monthly high was 6.5% year on year in December 2021) and slowed to 0.5% in 2025. Recreation and culture prices rose 29.6% in 2022, the World Cup year. In 2025 the biggest rise was miscellaneous goods and services (+12.3%) and housing and utilities fell 2.3%. The tobacco index stands at 246 (2018 = 100). |
+| Air travel | Passengers at Hamad International Airport fell 67.6%, from 38.8 million in 2019 to 12.6 million in 2020. By 2022 traffic was back to 35.7 million, 92% of the 2019 level. December 2022, the World Cup month, had 3.62 million passengers (+56% on December 2021). |
+| Hotels | Guests are staying longer: nights per guest rose from 1.06 in 2020 to 1.82 in 2023, and 2023 had 9.92 million hotel nights, the most in the data. |
+| Electricity | Consumption grew 33.6% from 41.8 TWh (2021) to 55.8 TWh (2025) while the population grew 23.8%, so use per resident rose from 15,828 to 17,088 kWh (+8.0%). |
+| Water | Water use grew 22.1% (426 to 521 million m3), close to population growth: about 436 litres per resident per day in 2025. |
+| Where the power goes | The 10 largest of 91 zones used 51% of the electricity in 2025. The largest is zone 75 (Al Thakhira, Ras Laffan, Umm Birka) with 9.4%, then zone 93 (Mesaieed Industrial Area) with 6.8%. |
 
-Per-resident utility figures divide total consumption, including industry, by
-the population, so they are not household consumption. See the [FAQ](#faq).
-
-## Pipeline numbers
-
-Measured on a Windows 11 laptop on 30 October 2026. Test and code counts are from 31 October 2026.
-
-| Measure | Value |
-| --- | --- |
-| Datasets | 7 (6 statistical datasets and 1 zone lookup table) |
-| Raw rows | 3,164 rows, 192 KB of CSV |
-| Requests for a full download | 14 (metadata and export for each dataset, 1 s apart) |
-| Full run from an empty folder | 62.5 s: 61.5 s waiting on the portal, 1.0 s to build and test |
-| Run with a fresh cache | 0.6 s, no requests |
-| Warehouse size after a fresh build | 6.0 MB |
-| SQL models | 22 (7 staging, 6 intermediate, 9 marts) plus 2 seed tables |
-| Data tests per run | 121: 113 pass, 8 warnings (4 known source issues, 4 [sudden-jump checks](#sudden-month-on-month-jumps)), 0 failures |
-| Unit tests | 356, about 31 s, no network access |
-| Code | 720 lines of SQL, about 4,150 lines of Python, 2,220 lines of tests |
-
-## Screenshots
-
-Real screenshots of the dashboard, taken with `python scripts/screenshots.py`
-(add `--lang ar` for Arabic).
+The per-resident utility figures are not what a household uses. KAHRAMAA's zone totals include industry (the two largest zones are Ras Laffan and Mesaieed, both industrial areas), so they are national consumption divided by the number of residents: useful for trends, not for comparing with household bills.
 
 | | |
 | --- | --- |
-| <img src="docs/images/overview.png" alt="Overview page" width="420"><br>**Overview**: headline figures, findings, and utility use against population on one indexed axis. | <img src="docs/images/population.png" alt="Population and jobs page" width="420"><br>**Population and jobs**: quarterly population by sex, participation and unemployment. |
-| <img src="docs/images/prices.png" alt="Prices page" width="420"><br>**Prices**: general CPI, monthly inflation and a heatmap of annual inflation by group. | <img src="docs/images/travel.png" alt="Travel and hotels page" width="420"><br>**Travel and hotels**: the 2020 collapse, the recovery and the World Cup month. |
-| <img src="docs/images/utilities.png" alt="Electricity and water page" width="420"><br>**Electricity and water**: national totals, per-resident use and a zone explorer with Arabic names. | <img src="docs/images/pipeline.png" alt="Pipeline health page" width="420"><br>**Pipeline health**: sources, fetch times, file hashes and the latest data test results. |
-| <img src="docs/images/overview-ar.png" alt="Overview page in Arabic" width="420"><br>**Overview in Arabic**: right-to-left layout with Arabic text and labels. | <img src="docs/images/prices-ar.png" alt="Prices page in Arabic" width="420"><br>**Prices in Arabic**: expenditure groups use the Arabic names from the marts. |
+| <img src="docs/images/overview.png" alt="Overview page" width="420"><br>Overview: headline figures, findings, and utility use against population on one indexed axis. | <img src="docs/images/population.png" alt="Population and jobs page" width="420"><br>Population and jobs: quarterly population by sex, participation and unemployment. |
+| <img src="docs/images/prices.png" alt="Prices page" width="420"><br>Prices: general CPI, monthly inflation and a heatmap of annual inflation by group. | <img src="docs/images/travel.png" alt="Travel and hotels page" width="420"><br>Travel and hotels: the 2020 collapse, the recovery and the World Cup month. |
+| <img src="docs/images/utilities.png" alt="Electricity and water page" width="420"><br>Electricity and water: national totals, per-resident use and a zone explorer with Arabic names. | <img src="docs/images/pipeline.png" alt="Pipeline health page" width="420"><br>Pipeline health: sources, fetch times, file hashes and the latest data test results. |
+| <img src="docs/images/overview-ar.png" alt="Overview page in Arabic" width="420"><br>Overview in Arabic: right-to-left layout with Arabic text and labels. | <img src="docs/images/prices-ar.png" alt="Prices page in Arabic" width="420"><br>Prices in Arabic: expenditure groups use the Arabic names from the marts. |
+
+The screenshots are taken from the running dashboard with `python scripts/screenshots.py` (add `--lang ar` for Arabic).
 
 ## How it works
 
@@ -114,26 +106,12 @@ flowchart LR
     marts --> exports
 ```
 
-**1. Extract** ([`pipeline/extract.py`](pipeline/extract.py)). For each dataset in
-[`config/sources.yml`](config/sources.yml) the extractor asks the portal for the
-dataset's metadata and, only if the data changed since the last download, its
-CSV export. Requests go out one at a time with a 1 second pause, failed
-requests are retried with exponential backoff (honouring `Retry-After`), and a
-file younger than 24 hours is reused without any request. Each file is checked
-against a column contract and a minimum row count before it replaces the old
-one. `data/raw/manifest.json` records the source URL, fetch time, row count and
-SHA-256 hash of every file.
-
-**2. Load** ([`pipeline/load.py`](pipeline/load.py)). Raw files are loaded into
-DuckDB unchanged, every column as text. The loader refuses a file whose hash or
-row count does not match the manifest.
-
-**3. Transform** ([`pipeline/transform.py`](pipeline/transform.py), [`models/`](models)).
-One SQL file per model, in three layers. Models refer to each other with
-`{{ ref('...') }}`, `{{ source('...') }}` and `{{ seed('...') }}`; a small runner
-reads those references, sorts the models into dependency order and creates
-each one as a view or a table. A model can only depend on its own layer or an
-earlier one.
+1. Extract ([`pipeline/extract.py`](pipeline/extract.py)). For each dataset in [`config/sources.yml`](config/sources.yml), the extractor asks the portal for the dataset's metadata and downloads its CSV export only if the data changed since the last download. Requests go out one at a time with a 1 second pause, failed requests are retried with exponential backoff (honouring `Retry-After`), and a file younger than 24 hours is reused without any request. A full download is 14 requests. Each file is checked against a column contract and a minimum row count before it replaces the old one, and `data/raw/manifest.json` records the source URL, fetch time, row count and SHA-256 hash of every file.
+2. Load ([`pipeline/load.py`](pipeline/load.py)). Raw files go into DuckDB unchanged, every column as text. The loader refuses a file whose hash or row count does not match the manifest.
+3. Transform ([`pipeline/transform.py`](pipeline/transform.py), [`models/`](models)). One SQL file per model, in three layers. Models refer to each other with `{{ ref('...') }}`, `{{ source('...') }}` and `{{ seed('...') }}`; a small runner reads those references, sorts the models into dependency order and creates each one as a view or a table. A model can only depend on its own layer or an earlier one.
+4. Test ([`pipeline/quality.py`](pipeline/quality.py), [`models/schema.yml`](models/schema.yml)). 121 data tests: not null, unique keys, accepted values, ranges, row counts, relationships, row-level rules (for example population 15+ must equal active plus inactive), custom SQL checks, freshness and sudden month-on-month jumps. Tests marked `warn` report known problems in the source, or jumps worth a look, without stopping the run.
+5. Present. The [Streamlit dashboard](dashboard) reads only the marts. Each chart has a "Show the numbers" table under it, and the written findings are computed from the data when the page loads. [`docs/data_catalog.md`](docs/data_catalog.md) is generated from the warehouse and lists every model, column, type and test, with a lineage graph.
+6. Export ([`pipeline/export.py`](pipeline/export.py)). `python -m pipeline export` writes each mart to `exports/` as Parquet, which keeps the column types, and as CSV in UTF-8 with a byte order mark, which Excel needs to show Arabic. [`docs/power-bi.md`](docs/power-bi.md) explains how to load them into Power BI, with suggested relationships and measures. The files were checked by reading them back with DuckDB and Python, but they have not been opened in Power BI or Excel, and the guide has not been tested in Power BI.
 
 | Layer | What happens there | Examples |
 | --- | --- | --- |
@@ -141,125 +119,42 @@ earlier one.
 | intermediate | Reshaping and calculations: pivots, male plus female totals, month-on-month and year-on-year changes (joined on the calendar, never on row position), annual population, complete-year flags. | `int_labour_force_quarterly`, `int_utilities_zone_annual` |
 | marts | Tables for analysis: facts per month, quarter or year, two dimensions (`dim_month`, `dim_zone`) and a one-row-per-year summary that combines every dataset. | `fct_utilities_national_annual`, `mart_annual_indicators` |
 
-**4. Test** ([`pipeline/quality.py`](pipeline/quality.py), [`models/schema.yml`](models/schema.yml)).
-121 data tests: not null, unique keys, accepted values, ranges, row counts,
-relationships, row-level rules (for example population 15+ must equal active
-plus inactive), custom SQL checks, freshness and sudden month-on-month jumps.
-Tests marked `warn` report known problems in the source, or jumps worth a look,
-without stopping the run.
+The build follows a write, audit, publish pattern. Loading, all 22 models and all tests run inside one DuckDB transaction, which is only committed when no error-level test fails. If the portal publishes a broken file, the run stops with a clear message and the dashboard keeps showing the last good data. Test results are stored in `audit.check_results` either way.
 
-The whole build follows a **write, audit, publish** pattern: loading, all 22
-models and all tests run inside one DuckDB transaction, and the transaction is
-only committed when no error-level test fails. If the portal ever publishes a
-broken file, the run stops with a clear message and the dashboard keeps showing
-the last good data. Test results are stored in `audit.check_results` either way.
+DuckDB fits because the data is small, the warehouse is a single file with no server, and its SQL handles dates, pivots and window functions well. The same models would run on Postgres or a cloud warehouse with minor changes. dbt would also work here (dbt-duckdb exists); the small runner keeps the project light on dependencies and shows how ref-based dependency ordering works. The model files use the same `{{ ref() }}` style, so moving to dbt later is mostly configuration.
 
-**5. Present.** The [Streamlit dashboard](dashboard) reads only the marts. Each
-chart has a "Show the numbers" table under it, and the written findings on each
-page are computed from the data when the page loads. A switch in the sidebar
-changes the whole dashboard between English and [Arabic](#arabic-mode).
-[`docs/data_catalog.md`](docs/data_catalog.md) is generated from the warehouse
-and lists every model, column, type and test, with a lineage graph.
+Measured on a Windows 11 laptop on 30 October 2026, with test and code counts from 31 October 2026:
 
-**6. Export** ([`pipeline/export.py`](pipeline/export.py)). `python -m pipeline export`
-writes each mart to `exports/` as Parquet and as CSV. Parquet keeps the column
-types; the CSV files are UTF-8 with a byte order mark, which is what Excel needs
-to show Arabic. [`docs/power-bi.md`](docs/power-bi.md) explains how to load them
-into Power BI, with suggested relationships and measures. The files were checked
-by reading them back with DuckDB and Python. They have not been opened in Power
-BI or Excel, and the guide has not been tested in Power BI.
-
-## Quick start
-
-You need Python 3.11 or newer. Everything works the same in PowerShell, cmd or
-bash; `tasks.py` replaces a Makefile.
-
-```bash
-git clone <this repository>
-cd qatar-open-data-pipeline
-python -m venv .venv
-.venv\Scripts\activate            # macOS / Linux: source .venv/bin/activate
-python tasks.py setup             # pip install -r requirements-dev.txt
-
-python -m pipeline run            # download, build and test (about a minute)
-python tasks.py dashboard         # open http://localhost:8501
-                                  # or http://localhost:8501/?lang=ar for Arabic
-```
-
-The pipeline commands:
-
-| Command | What it does |
+| Measure | Value |
 | --- | --- |
-| `python -m pipeline run` | Extract, build and test. The normal command. `--skip-extract` works offline from `data/raw`, `--force` downloads everything again. |
-| `python -m pipeline extract` | Download raw files only. `--only cpi_monthly` for one dataset. |
-| `python -m pipeline transform` | Load raw files and build the models (no tests). `--select fct_cpi_monthly` builds one model and its parents. |
-| `python -m pipeline test` | Run the data tests against the current warehouse. Exits with code 1 on failure. |
-| `python -m pipeline docs` | Regenerate `docs/data_catalog.md`. |
-| `python -m pipeline export` | Write every mart to `exports/` as Parquet and CSV. `--out DIR` writes somewhere else. |
-| `python -m pipeline sources` | List the configured datasets. |
-
-Development tasks: `python tasks.py test` (pytest), `python tasks.py lint`
-(ruff), `python tasks.py help` for the full list.
-
-**With Docker:**
-
-```bash
-docker compose up --build         # runs the pipeline, then serves the dashboard on :8501
-docker compose run --rm pipeline  # refresh the data later
-```
-
-The `pipeline` service writes to a named volume and exits; the `dashboard`
-service only starts if the pipeline finished successfully and mounts the volume
-read-only.
+| Datasets | 7 (6 statistical datasets and 1 zone lookup table) |
+| Raw rows | 3,164 rows, 192 KB of CSV |
+| Requests for a full download | 14 (metadata and export for each dataset, 1 s apart) |
+| Full run from an empty folder | 62.5 s: 61.5 s waiting on the portal, 1.0 s to build and test |
+| Run with a fresh cache | 0.6 s, no requests |
+| Warehouse size after a fresh build | 6.0 MB |
+| SQL models | 22 (7 staging, 6 intermediate, 9 marts) plus 2 seed tables |
+| Data tests per run | 121: 113 pass, 8 warnings (4 known source issues, 4 [sudden-jump checks](#sudden-month-on-month-jumps)), 0 failures |
+| Unit tests | 356, about 31 s, no network access |
+| Code | 720 lines of SQL, about 4,150 lines of Python, 2,220 lines of tests |
 
 ## Arabic mode
 
-The language switch at the bottom of the sidebar turns the dashboard into Arabic
-with a right-to-left layout. Adding `?lang=ar` to the address opens it that way.
-The choice stays when you change page.
+The language switch at the bottom of the sidebar, or `?lang=ar` in the address, turns the whole dashboard into Arabic with a right-to-left layout, and the choice stays when you change page. Labels from the data (month names, expenditure group names, zone names and sex) come straight from the marts. Interface text such as titles, captions, axis labels and written findings is in [`dashboard/i18n.py`](dashboard/i18n.py), and a unit test fails if any text in the dashboard has no Arabic version. The written findings are built from the data in Arabic too, so they stay right when the portal publishes new figures. The English text is unchanged.
 
-- **Labels from the data** come straight from the marts: month names, expenditure
-  group names, zone names and sex.
-- **Interface text** (titles, captions, axis labels, written findings) is in
-  [`dashboard/i18n.py`](dashboard/i18n.py). A unit test fails if any text in the
-  dashboard has no Arabic version. The English text is unchanged.
-- **Written findings** are built from the data in Arabic too, so they stay right
-  when the portal publishes new figures.
+Some things stay as they are. Numbers use Western digits (1, 2, 3), as the source data does. Time on charts still runs from left to right, while titles, legends and ranked bars move to the right. Dates on chart axes are digits (2022-12), because the chart library would otherwise print English month names. On the Pipeline health page, test results, dataset titles and model names stay in English, because that is how they are stored. Streamlit's own menu and messages stay in English.
 
-Some things stay as they are:
+What has and hasn't been checked:
 
-- Numbers use Western digits (1, 2, 3), as the source data does.
-- Time on charts still runs from left to right. Titles, legends and ranked bars
-  move to the right.
-- Dates on chart axes are digits (2022-12), because the chart library would
-  otherwise print English month names.
-- On the Pipeline health page, test results and dataset titles stay in English,
-  because that is how they are stored, and so do the model names.
-- Streamlit's own menu and messages stay in English.
+- The unit tests run every page in Arabic, but they can't see the layout.
+- The layout was checked by hand in headless Microsoft Edge at 1280 and 390 pixels wide: alignment, dropdowns, the year slider, the sidebar, the language switch, changing page and reloading. It has not been tried in other browsers, on a real phone, or with a screen reader.
+- No professional translator has reviewed the interface text, so please report anything that reads badly.
+- Streamlit has no right-to-left setting, so this works through CSS that depends on how Streamlit 1.66 builds its pages. A Streamlit upgrade can break it, so check the Arabic pages in a browser after upgrading.
+- On a narrow screen, a wide table in Arabic opens at its last columns, and you scroll to reach the first.
 
-How it was checked, and what was not:
+## Data and licensing
 
-- The unit tests run every page in Arabic, but they cannot see the layout.
-- The layout was checked by hand in headless Microsoft Edge at 1280 and 390
-  pixels wide: alignment, dropdowns, the year slider, the sidebar, the language
-  switch, changing page and reloading. It has not been tried in other browsers,
-  on a real phone, or with a screen reader.
-- The interface translation has not been reviewed by a professional translator,
-  so please report anything that reads badly.
-- Streamlit has no right-to-left setting, so this works through CSS that depends
-  on how Streamlit 1.66 builds its pages. A Streamlit upgrade can break it, so
-  check the Arabic pages in a browser after upgrading.
-- On a narrow screen, a wide table in Arabic opens at its last columns, and you
-  scroll to reach the first.
-
-## Datasets
-
-All data comes from the [Qatar Open Data Portal](https://www.data.gov.qa) through
-its Opendatasoft Explore API v2.1. The portal publishes these datasets under the
-[Creative Commons Attribution 4.0 licence (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/)
-(the licence field in each dataset's metadata). The raw files are not stored in
-this repository; the pipeline downloads them. The test fixtures in
-`tests/fixtures/raw` are small excerpts of the same data, under the same licence.
+All data comes from the [Qatar Open Data Portal](https://www.data.gov.qa) through its Opendatasoft Explore API v2.1. The portal publishes these datasets under the [Creative Commons Attribution 4.0 licence (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/), according to the licence field in each dataset's metadata. The raw files are not stored in this repository; the pipeline downloads them. The test fixtures in `tests/fixtures/raw` are small excerpts of the same data, under the same licence.
 
 | Key | Dataset | Publisher | Coverage | Rows |
 | --- | --- | --- | --- | ---: |
@@ -275,35 +170,18 @@ Attribution: Qatar Open Data Portal, National Planning Council and KAHRAMAA.
 
 ### Known issues in the source data
 
-The pipeline keeps these visible instead of hiding them:
+The pipeline keeps these visible:
 
-- **Hotel nights below guests.** From January 2019 to January 2020 the published
-  nights are lower than the guests (0.82 nights per guest in 2019), which cannot
-  be right. A `warn` test flags the 13 months and the dashboard says so.
-- **Stale series.** Airport passengers stop in December 2022 and hotel figures in
-  December 2023. CPI ends in December 2025 and the labour survey in 2025 Q4.
-  Freshness tests warn about each one.
-- **Partial year.** KAHRAMAA publishes the running year as a partial total
-  (January to August for 2026). The pipeline marks a year complete only if the
-  file was downloaded after the year ended, and leaves partial years out of
-  growth rates and per-resident figures.
-- **Labels.** English CPI group names contain typos ("Resturant", "gooda"), the
-  general index is coded "0" while the groups use "001" to "012", and several
-  columns are transliterated from Arabic. The staging layer fixes these and the
-  [data catalog](docs/data_catalog.md) lists the portal's own English and Arabic
-  label for every raw column.
+- From January 2019 to January 2020 the published hotel nights are lower than the guests (0.82 nights per guest in 2019), which cannot be right. A `warn` test flags the 13 months and the dashboard says so.
+- Airport passengers stop in December 2022 and hotel figures in December 2023, because the portal has not published anything later. CPI ends in December 2025 and the labour survey in 2025 Q4. Freshness tests warn about each one, and the gaps are not filled with estimates.
+- KAHRAMAA publishes the running year as a partial total (January to August for 2026). The pipeline marks a year complete only if the file was downloaded after the year ended, and leaves partial years out of growth rates and per-resident figures.
+- English CPI group names contain typos ("Resturant", "gooda"), the general index is coded "0" while the groups use "001" to "012", and several columns are transliterated from Arabic. The staging layer fixes these, and the [data catalog](docs/data_catalog.md) lists the portal's own English and Arabic label for every raw column.
 
 ### Sudden month-on-month jumps
 
-Anomaly checks compare each month with the calendar month before it. A month is
-flagged when the move is larger than a set limit and also several times the
-usual move for that series, because a 5% move is ordinary for airport passengers
-and rare for the general price index. The limits are in
-[`config/quality.yml`](config/quality.yml).
+Anomaly checks compare each month with the calendar month before it. A month is flagged when the move is larger than a set limit and also several times the usual move for that series, because a 5% move is ordinary for airport passengers and rare for the general price index. The limits are in [`config/quality.yml`](config/quality.yml).
 
-The checks cover total airport passengers, hotel guests, hotel nights and the 13
-CPI series. On the data downloaded on 31 October 2026 they flagged 17 of 1,112
-monthly changes:
+The checks cover total airport passengers, hotel guests, hotel nights and the 13 CPI series. On the data downloaded on 31 October 2026 they flagged 17 of 1,112 monthly changes. The general CPI index had no flags; its largest monthly move was 2.6%.
 
 | Series | Flagged months | What the data shows |
 | --- | --- | --- |
@@ -315,22 +193,7 @@ monthly changes:
 | CPI: Restaurants and hotels | 2022-11 +7.6%, 2023-01 -6.2% | The rise is around the World Cup, and the index was back below its October 2022 level by March 2023. |
 | CPI: Tobacco | 2020-02 +8.4% | The only change in this index from January 2020 to December 2025 (227 to 246). |
 
-A flag means "look at this month". It does not show that a number is wrong, and
-none of these has been confirmed as an error or explained by the publishers. The
-right-hand column describes the data and the calendar; it does not give causes.
-
-The check has clear limits:
-
-- It cannot tell a real event from a mistake in the source.
-- It does not adjust for seasons or holidays such as Ramadan and Eid, which
-  move through the calendar.
-- The limits were chosen after looking at this same data, so the number of flags
-  says little on its own.
-- It only finds sudden moves. The hotel nights problem listed above is not
-  flagged, because neither column jumps; a separate test catches it.
-- It covers monthly series only, not the quarterly labour figures.
-
-The general CPI index had no flags; its largest monthly move was 2.6%.
+A flag means "look at this month". None of these has been confirmed as an error or explained by the publishers, and the right-hand column describes the data and the calendar without giving causes. The check can't tell a real event from a mistake in the source, and it doesn't adjust for seasons or holidays such as Ramadan and Eid, which move through the calendar. The limits were chosen after looking at this same data, so the number of flags says little on its own. It only finds sudden moves, so the hotel nights problem above is caught by a separate test, not by this one, and it covers monthly series only, not the quarterly labour figures.
 
 ## Project structure
 
@@ -352,62 +215,10 @@ tasks.py                cross-platform task runner
 Dockerfile, docker-compose.yml
 ```
 
-## Roadmap
+Planned next: a scheduled refresh (Windows Task Scheduler or a CI job) with a change log of what the portal updated; more datasets (GDP by activity, vehicle registrations, births and deaths); and zone-level population from the 2020 census for per-resident figures by zone.
 
-- [x] Polite extractor with retries, caching, change detection and a manifest
-- [x] Layered SQL models with a dependency-aware runner
-- [x] Data tests with warn and error levels, run inside the build transaction
-- [x] Generated data catalog with lineage
-- [x] Dashboard with written findings and table views
-- [x] Docker setup
-- [x] Anomaly checks on monthly series (sudden jumps reported as warnings)
-- [x] Arabic interface for the dashboard (right-to-left layout)
-- [x] Export the marts to Parquet and CSV for use in Power BI or Excel
-- [ ] Scheduled refresh (Windows Task Scheduler or a CI job) with a change log of what the portal updated
-- [ ] More datasets: GDP by activity, vehicle registrations, births and deaths
-- [ ] Zone-level population from the 2020 census for per-resident figures by zone
-
-## FAQ
-
-**Is "electricity per resident" what a household uses?**
-No. KAHRAMAA's zone totals include industry (the two largest zones are Ras
-Laffan and Mesaieed, both industrial areas), so the figure is national
-consumption divided by the number of residents. It is useful for trends, not
-for comparing with household bills.
-
-**Why are recent years missing for travel?**
-The portal has not published airport passengers after 2022 or hotel figures
-after 2023. The pipeline shows what exists and the freshness tests warn about
-the gap; it does not fill it with estimates.
-
-**Why DuckDB?**
-The data is small, the warehouse is a single file, it needs no server, and its
-SQL handles dates, pivots and window functions well. The same models would run
-on Postgres or a cloud warehouse with minor changes.
-
-**Why not dbt?**
-dbt would work well here (dbt-duckdb exists). A small runner keeps the project
-dependency-light and shows how ref-based dependency ordering works. The model
-files use the same `{{ ref() }}` style, so moving to dbt later is mostly
-configuration.
-
-**Does it put load on the portal?**
-A full download is 14 requests, sent one at a time with a pause in between. After
-that, a run within 24 hours makes no requests, and later runs only download a
-dataset again if its metadata says the data changed.
-
-**Can I run it without internet?**
-Yes, once the files are in `data/raw`: `python -m pipeline run --skip-extract`.
-The unit tests never use the network; they run against trimmed copies of the
-real files in `tests/fixtures/raw`.
-
-## Contributing
-
-Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains
-the setup and walks through adding a new dataset step by step.
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains the setup and walks through adding a new dataset step by step.
 
 ## License
 
-The code is released under the [MIT License](LICENSE), Copyright (c) 2026
-Mohaned Elhagar. The data belongs to its publishers and is used under the
-portal's terms (CC BY 4.0); this licence does not cover it.
+The code is released under the [MIT License](LICENSE), Copyright (c) 2026 Mohaned Elhagar. The data belongs to its publishers and is used under the portal's terms (CC BY 4.0); this licence does not cover it.
