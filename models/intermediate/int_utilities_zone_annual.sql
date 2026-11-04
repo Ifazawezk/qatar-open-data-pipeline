@@ -1,7 +1,9 @@
 -- Electricity and water consumption per zone and year in one row.
--- A year is complete only if the file was downloaded after that year ended:
--- KAHRAMAA publishes the running year as a partial total (January to August
--- for 2026), and comparing it with full years would look like a collapse.
+-- A year is complete only if the portal published the data after that year
+-- ended: KAHRAMAA publishes the running year as a partial total (January to
+-- August for 2026), and comparing it with full years would look like a
+-- collapse. The download time is not enough, because a file fetched in
+-- January can still be the one published the September before.
 
 with electricity as (
     select * from {{ ref('stg_electricity_by_zone') }}
@@ -13,7 +15,7 @@ water as (
 
 fetched as (
     select
-        min(year(fetched_at)) as first_incomplete_year
+        min(year(coalesce(source_modified, fetched_at))) as first_incomplete_year
     from {{ source('audit', 'source_manifest') }}
     where source_key in ('electricity_by_zone', 'water_by_zone')
 )

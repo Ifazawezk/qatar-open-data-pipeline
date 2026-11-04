@@ -40,6 +40,7 @@ def write_raw(
     key: str,
     content: bytes,
     fetched_at: str = "2026-10-01T06:00:00+00:00",
+    source_modified: str = "2026-09-01T00:00:00+00:00",
 ) -> None:
     """Put a raw file in place and register it in the manifest, as extract would."""
     settings.raw_dir.mkdir(parents=True, exist_ok=True)
@@ -58,7 +59,7 @@ def write_raw(
             licence="CC BY 4.0",
             fetched_at=fetched_at,
             checked_at=fetched_at,
-            source_modified="2026-09-01T00:00:00+00:00",
+            source_modified=source_modified,
             row_count=rows,
             columns=header,
             sha256=sha256_bytes(content),
@@ -77,10 +78,14 @@ def settings(tmp_path: Path) -> Settings:
     )
 
 
-def stage_fixture_files(settings: Settings, fetched_at: str = "2026-10-01T06:00:00+00:00") -> None:
+def stage_fixture_files(
+    settings: Settings,
+    fetched_at: str = "2026-10-01T06:00:00+00:00",
+    source_modified: str = "2026-09-01T00:00:00+00:00",
+) -> None:
     """Copy the trimmed real-data fixtures into a raw dir with a manifest."""
     for path in sorted((FIXTURES / "raw").glob("*.csv")):
-        write_raw(settings, path.stem, path.read_bytes(), fetched_at=fetched_at)
+        write_raw(settings, path.stem, path.read_bytes(), fetched_at, source_modified)
 
 
 @pytest.fixture(scope="session")
